@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#002c5f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Inspeção de Recebimento</title>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%;font-family:-apple-system,BlinkMacSystemFont,
+            "Segoe UI",Roboto,Arial,sans-serif;background:#ececec;color:#1e293b}
+  .bar{background:#002c5f;color:#fff;padding:12px 16px;
+       display:flex;align-items:center;gap:10px;position:sticky;top:0;
+       z-index:20;box-shadow:0 2px 8px rgba(0,0,0,.18)}
+  .bar h1{font-size:16px;margin:0;font-weight:700;flex:1}
+  .bar .sync{font-size:11px;color:#ffcf7a}
+  .bar .sync.on{color:#8affab}
+  .wrap{padding:14px;max-width:680px;margin:0 auto;padding-bottom:90px}
+  .card{background:#fff;border-radius:10px;padding:14px;margin-bottom:12px;
+        box-shadow:0 1px 4px rgba(0,0,0,.08)}
+  .lbl{font-size:11px;font-weight:700;color:#5a6b7a;text-transform:uppercase;
+       margin:10px 0 4px;display:block}
+  input,select,textarea{width:100%;padding:12px;border:1px solid #cbd5e1;
+       border-radius:8px;font-size:16px;font-family:inherit;background:#fff;
+       color:#1e293b}
+  input:focus,select:focus{outline:none;border-color:#00b2a9;
+       box-shadow:0 0 0 3px rgba(0,178,169,.15)}
+  .row{display:flex;gap:8px}
+  .row>*{flex:1}
+  .btn{padding:14px;border:none;border-radius:8px;font-size:15px;
+       font-weight:700;cursor:pointer;width:100%;font-family:inherit}
+  .btn:active{opacity:.85}
+  .btn-primary{background:#15803d;color:#fff}
+  .btn-teal{background:#00b2a9;color:#fff}
+  .btn-ghost{background:#e5e7eb;color:#374151}
+  .btn-danger{background:#b91c1c;color:#fff}
+  .btn-na{background:#b45309;color:#fff;padding:6px 12px;font-size:12px;
+          width:auto;border-radius:6px}
+  .btn-sm{padding:8px 12px;font-size:13px;width:auto}
+  .hint{font-size:12px;color:#5a6b7a;margin-top:4px}
+  .err{font-size:12px;color:#b91c1c;margin-top:6px}
+  .ok{font-size:12px;color:#15803d;margin-top:6px}
+  .cand{background:#f8fafc;border:1px solid #d7dee6;border-radius:8px;
+        padding:12px;margin-bottom:6px;cursor:pointer;font-size:14px}
+  .cand:active{background:#e8f7e9;border-color:#00b2a9}
+  .cand b{color:#002c5f}
+  .tabline{display:none}
+  .tabline.active{display:block}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th{background:#002c5f;color:#fff;padding:8px 6px;text-align:left;
+     font-size:10px;text-transform:uppercase;position:sticky;top:0}
+  td{padding:8px 6px;border-bottom:1px solid #e5e7eb;vertical-align:top}
+  tr.na td{color:#b45309;font-style:italic}
+  .fita{position:fixed;bottom:0;left:0;right:0;background:#fff;
+        border-top:1px solid #d1d5db;padding:10px 14px;
+        display:flex;gap:8px;z-index:15;box-shadow:0 -2px 8px rgba(0,0,0,.06)}
+  .fita .btn{flex:1}
+  .count{font-size:13px;font-weight:700;color:#002c5f;
+         display:flex;justify-content:space-between;padding:6px 2px}
+  #scan-box{display:none;position:fixed;inset:0;background:#000;z-index:99;
+            flex-direction:column}
+  #scan-box video{flex:1;object-fit:cover;width:100%}
+  #scan-box .sc-bar{background:#000;color:#fff;padding:14px;
+                    display:flex;justify-content:space-between;
+                    align-items:center;font-size:14px}
+  #scan-box button{background:#fff;color:#000;border:none;border-radius:6px;
+                   padding:8px 16px;font-weight:700}
+  .empty{text-align:center;color:#8a97a5;padding:32px 12px;font-size:14px}
+</style>
+</head>
+<body>
+
+<div class="bar">
+  <h1>Inspeção de Recebimento</h1>
+  <span class="sync" id="sync">•••</span>
+</div>
+
+<div class="wrap">
+
+  <!-- ============ ABA NOVA LEITURA ============ -->
+  <div class="tabline active" id="tab-leitura">
+
+    <div class="card">
+      <label class="lbl">Responsável pela liberação</label>
+      <div class="row">
+        <select id="resp" style="flex:3"></select>
+        <button class="btn btn-teal btn-sm" style="flex:1"
+                onclick="novoResponsavel()">+ Novo</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <label class="lbl">PART NUMBER (catálogo do Cadastro)</label>
+      <div class="row">
+        <input id="busca" placeholder="parte do PN ou da descrição"
+               autocomplete="off" autocapitalize="characters"
+               oninput="buscarPreview()"
+               onkeydown="if(event.key==='Enter'){event.preventDefault();buscar()}">
+        <button class="btn btn-ghost btn-sm" style="flex:0 0 auto"
+                onclick="toggleScan()">📷</button>
+      </div>
+      <div class="hint">Ex: 249 lista BC14024901.A e BC14124901.A</div>
+      <div class="err" id="busca-msg"></div>
+      <div id="cands" style="margin-top:8px"></div>
+    </div>
+
+    <div class="card">
+      <label class="lbl">PART NUMBER</label>
+      <input id="f_part_number" autocapitalize="characters">
+
+      <label class="lbl">DESCRIÇÃO</label>
+      <input id="f_descricao">
+
+      <label class="lbl">QUANTIDADE</label>
+      <input id="f_quantidade" inputmode="decimal">
+
+      <label class="lbl" style="display:flex;justify-content:space-between;
+                                align-items:center">
+        <span>LOTE MANDO</span>
+        <button class="btn-na" onclick="marcarNA('f_lote_mando')">N/A</button>
+      </label>
+      <input id="f_lote_mando">
+
+      <label class="lbl" style="display:flex;justify-content:space-between;
+                                align-items:center">
+        <span>LOTE FORNECEDOR</span>
+        <button class="btn-na" onclick="marcarNA('f_lote_fornecedor')">N/A</button>
+      </label>
+      <input id="f_lote_fornecedor">
+
+      <label class="lbl" style="display:flex;justify-content:space-between;
+                                align-items:center">
+        <span>DATA DE ENTRADA</span>
+        <button class="btn-na" style="background:#002c5f"
+                onclick="marcarHoje()">hoje</button>
+      </label>
+      <input id="f_data_entrada" type="date">
+
+      <div class="err" id="form-msg"></div>
+    </div>
+
+    <div class="card">
+      <button class="btn btn-primary" onclick="adicionar()">
+        ADICIONAR LINHA
+      </button>
+      <button class="btn btn-teal" style="margin-top:8px"
+              onclick="adicionarLimpar()">
+        Adicionar e limpar
+      </button>
+    </div>
+
+  </div>
+
+  <!-- ============ ABA LINHAS ============ -->
+  <div class="tabline" id="tab-linhas">
+    <div class="count">
+      <span id="cnt">0 linhas</span>
+      <span id="cnt-pn" style="color:#5a6b7a;font-weight:400"></span>
+    </div>
+    <div class="card" style="padding:0;overflow:hidden">
+      <div style="overflow:auto;max-height:60vh">
+        <table id="tabela">
+          <thead>
+            <tr>
+              <th>PN</th><th>DESCRIÇÃO</th><th>QTD</th>
+              <th>LOTE MANDO</th><th>LOTE FORN.</th>
+              <th>DATA</th><th>RESP.</th><th></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="empty" id="vazio">Nenhuma linha ainda.</div>
+    <button class="btn btn-danger" style="margin-top:12px"
+            onclick="limparTudo()">LIMPAR TODAS AS LINHAS</button>
+  </div>
+
+  <!-- ============ ABA CATÁLOGO (somente leitura) ============ -->
+  <div class="tabline" id="tab-catalogo">
+    <div class="card">
+      <label class="lbl">Buscar no catálogo</label>
+      <input id="cat_busca" placeholder="parte do PN ou da descrição"
+             autocomplete="off" autocapitalize="characters"
+             oninput="renderCatalogo()">
+      <div class="hint">Fonte: módulo Cadastros — somente leitura.</div>
+    </div>
+    <div class="card">
+      <div class="count">
+        <span id="cat_count">0 PNs</span>
+      </div>
+      <div id="cat_lista"></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- abas -->
+<div class="fita">
+  <button class="btn btn-ghost" id="tabbtn-leitura"
+          onclick="mudarAba('leitura')">Nova</button>
+  <button class="btn btn-ghost" id="tabbtn-linhas"
+          onclick="mudarAba('linhas')">Linhas (<span id="badge">0</span>)</button>
+  <button class="btn btn-ghost" id="tabbtn-catalogo"
+          onclick="mudarAba('catalogo')">Catálogo</button>
+  <button class="btn btn-primary" style="flex:0 0 auto;padding:14px 16px"
+          onclick="exportar()">📥</button>
+</div>
+
+<!-- scanner -->
+<div id="scan-box">
+  <video id="scan-video" playsinline></video>
+  <div class="sc-bar">
+    <span>Aponte para o código</span>
+    <button onclick="fecharScan()">Fechar</button>
+  </div>
+</div>
+
+<script>
+// ===================== CONFIG =====================
+const FB_CONFIG = {
+  apiKey: "AIzaSyB8kMScDummyKeyReplaceIfNeeded",
+  authDomain: "kyro-7cb7a.firebaseapp.com",
+  databaseURL: "https://kyro-7cb7a-default-rtdb.firebaseio.com",
+  projectId: "kyro-7cb7a",
+  storageBucket: "kyro-7cb7a.appspot.com"
+};
+
+// Catálogo vem do módulo Cadastro — NÃO é editado aqui
+const REF_PRODUTOS = "cadastros/produtos_mestre";
+
+const REF_RESPONS = "hl_inspecao/responsaveis";
+const REF_LEITURAS = "hl_inspecao/leituras";
+
+const NA = "N/A";
+const ORIGEM = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)
+               ? "MOBILE" : "PC";
+
+let db = null, fbOk = false;
+let produtos = [], responsaveis = [], leituras = [];
+
+// ===================== FIREBASE =====================
+function conectar() {
+  try {
+    firebase.initializeApp(FB_CONFIG);
+    db = firebase.database();
+    fbOk = true;
+    escutar();
+  } catch (e) {
+    console.warn("Firebase indisponível:", e);
+    setSync(false);
+  }
+}
+
+function setSync(on) {
+  const el = document.getElementById('sync');
+  el.textContent = on ? '● Sincronizado' : '○ Offline';
+  el.className = 'sync ' + (on ? 'on' : '');
+}
+
+function escutar() {
+  // ----- catálogo do Cadastro -----
+  db.ref(REF_PRODUTOS).on('value', snap => {
+    const cru = snap.val() || {};
+    const arr = Array.isArray(cru) ? cru : Object.values(cru);
+
+    produtos = arr
+      .filter(p => p && typeof p === 'object')
+      .map(p => ({
+        pn: String(p.partNumber || p.pn || '').trim().toUpperCase(),
+        descricao: String(p.descricao || '').trim().toUpperCase(),
+        fornecedor: String(p.fornecedor || '').trim().toUpperCase()
+      }))
+      .filter(p => p.pn)
+      .sort((a, b) => a.pn.localeCompare(b.pn));
+
+    renderCatalogo();
+  }, err => console.warn("catalogo:", err));
+
+  // ----- responsáveis -----
+  db.ref(REF_RESPONS).on('value', snap => {
+    const v = snap.val() || {};
+    responsaveis = Object.values(v).map(r => r.nome).filter(Boolean);
+    renderResponsaveis();
+  }, err => console.warn(err));
+
+  // ----- leituras -----
+  db.ref(REF_LEITURAS).on('value', snap => {
+    const v = snap.val() || {};
+    leituras = Object.entries(v)
+      .map(([id, obj]) => Object.assign({ _id: id }, obj))
+      .sort((a, b) => (a.criado || 0) - (b.criado || 0));
+    renderTabela();
+    setSync(true);
+  }, err => { console.warn(err); setSync(false); });
+}
+
+// ===================== RESPONSÁVEIS =====================
+function renderResponsaveis() {
+  const sel = document.getElementById('resp');
+  const atual = sel.value;
+  sel.innerHTML = '<option value="">— selecione —</option>' +
+    responsaveis.map(n => `<option>${esc(n)}</option>`).join('');
+  if (atual) sel.value = atual;
+}
+
+async function novoResponsavel() {
+  const nome = prompt("Nome do responsável:");
+  if (!nome) return;
+  const chave = nome.trim().toUpperCase().replace(/\s+/g, '_');
+  try {
+    await db.ref(`${REF_RESPONS}/${chave}`).set({ nome: nome.trim() });
+    document.getElementById('resp').value = nome.trim();
+  } catch (e) {
+    alert("Erro ao salvar: " + e.message);
+  }
+}
+
+// ===================== BUSCA NO CATÁLOGO =====================
+function acharCandidatos(termo) {
+  const t = String(termo || '').trim().toUpperCase();
+  if (!t) return { exato: null, cands: [], total: 0 };
+
+  const exato = produtos.find(p => p.pn === t);
+  if (exato) return { exato, cands: [], total: 1 };
+
+  const tl = t.toLowerCase();
+  const achados = [];
+
+  produtos.forEach(p => {
+    const pnl = p.pn.toLowerCase();
+    const dcl = (p.descricao || '').toLowerCase();
+    if (pnl.includes(tl)) {
+      achados.push({ pri: pnl.startsWith(tl) ? 0 : 1, p });
+    } else if (dcl.includes(tl)) {
+      achados.push({ pri: 2, p });
+    }
+  });
+
+  achados.sort((a, b) =>
+    a.pri !== b.pri ? a.pri - b.pri : a.p.pn.localeCompare(b.p.pn));
+
+  return {
+    exato: null,
+    cands: achados.slice(0, 12).map(x => x.p),
+    total: achados.length
+  };
+}
+
+function buscarPreview() {
+  const termo = document.getElementById('busca').value.trim();
+  const msg = document.getElementById('busca-msg');
+  const box = document.getElementById('cands');
+  msg.textContent = '';
+  box.innerHTML = '';
+
+  if (termo.length < 2) return;
+
+  const { exato, cands } = acharCandidatos(termo);
+
+  if (exato) {
+    box.innerHTML = `<div class="cand" onclick="escolherPorPn('${esc(exato.pn)}')">
+      <b>${esc(exato.pn)}</b><br>
+      <span style="color:#5a6b7a">${esc(exato.descricao)}</span></div>`;
+    return;
+  }
+
+  if (!cands.length) {
+    msg.textContent = `Nenhum PN no Cadastro com "${termo}".`;
+    return;
+  }
+
+  box.innerHTML = cands.map(p =>
+    `<div class="cand" onclick="escolherPorPn('${esc(p.pn)}')">
+      <b>${esc(p.pn)}</b><br>
+      <span style="color:#5a6b7a">${esc(p.descricao)}</span>
+    </div>`).join('');
+}
+
+function buscar() {
+  const termo = document.getElementById('busca').value.trim();
+  const msg = document.getElementById('busca-msg');
+  const box = document.getElementById('cands');
+  msg.textContent = '';
+  box.innerHTML = '';
+
+  if (!termo) return;
+
+  const { exato, cands, total } = acharCandidatos(termo);
+
+  if (exato) {
+    preencher(exato);
+    document.getElementById('busca').value = '';
+    document.getElementById('f_quantidade').focus();
+    return;
+  }
+
+  if (cands.length === 1) {
+    preencher(cands[0]);
+    document.getElementById('busca').value = '';
+    document.getElementById('f_quantidade').focus();
+    return;
+  }
+
+  if (!cands.length) {
+    msg.textContent = `Nenhum PN no Cadastro com "${termo}". ` +
+                      `Cadastre no módulo Cadastros.`;
+    return;
+  }
+
+  let extra = '';
+  if (total > cands.length) {
+    extra = ` — mostrando ${cands.length} de ${total}`;
+  }
+
+  box.innerHTML = `<div class="hint" style="margin-bottom:6px">
+    ${cands.length} PN(s) no Cadastro${extra}. Toque para usar:</div>` +
+    cands.map(p =>
+      `<div class="cand" onclick="escolherPorPn('${esc(p.pn)}')">
+        <b>${esc(p.pn)}</b><br>
+        <span style="color:#5a6b7a">${esc(p.descricao)}</span>
+      </div>`).join('');
+}
+
+function escolherPorPn(pn) {
+  const p = produtos.find(x => x.pn === pn);
+  if (!p) return;
+  preencher(p);
+  document.getElementById('busca').value = '';
+  document.getElementById('cands').innerHTML = '';
+  document.getElementById('busca-msg').textContent = '';
+  document.getElementById('f_quantidade').focus();
+}
+
+function preencher(p) {
+  document.getElementById('f_part_number').value = p.pn || '';
+  document.getElementById('f_descricao').value = p.descricao || '';
+}
+
+// ===================== CATÁLOGO (somente leitura) =====================
+function renderCatalogo() {
+  const box = document.getElementById('cat_lista');
+  const cnt = document.getElementById('cat_count');
+  const termo = (document.getElementById('cat_busca').value || '')
+                  .trim().toUpperCase();
+
+  const lista = termo
+    ? produtos.filter(p =>
+        p.pn.includes(termo) || (p.descricao || '').includes(termo))
+    : produtos;
+
+  cnt.textContent = lista.length +
+    (lista.length === 1 ? ' PN' : ' PNs') +
+    (termo ? ' de ' + produtos.length : '');
+
+  if (!lista.length) {
+    box.innerHTML = '<div class="empty">' +
+      (produtos.length ? 'Nenhum PN com esse filtro.'
+                       : 'Catálogo vazio. Cadastre produtos no módulo Cadastros.') +
+      '</div>';
+    return;
+  }
+
+  box.innerHTML = lista.slice(0, 200).map(p => `
+    <div style="border-bottom:1px solid #e5e7eb;padding:10px 0">
+      <b style="color:#002c5f">${esc(p.pn)}</b><br>
+      <span style="font-size:13px;color:#5a6b7a">${esc(p.descricao)}</span>
+      ${p.fornecedor ? `<br><span style="font-size:11px;color:#8a97a5">forn: ${esc(p.fornecedor)}</span>` : ''}
+    </div>`).join('') +
+    (lista.length > 200
+      ? `<div class="hint" style="padding:10px 0">Mostrando 200 de ${lista.length}. Refine a busca.</div>`
+      : '');
+}
+
+// ===================== FORM =====================
+function marcarNA(id) {
+  document.getElementById(id).value = NA;
+}
+
+function marcarHoje() {
+  document.getElementById('f_data_entrada').value = hoje();
+}
+
+function hoje() {
+  const d = new Date();
+  return d.getFullYear() + '-' +
+    String(d.getMonth() + 1).padStart(2, '0') + '-' +
+    String(d.getDate()).padStart(2, '0');
+}
+
+function dadosForm() {
+  return {
+    part_number: document.getElementById('f_part_number').value.trim(),
+    descricao: document.getElementById('f_descricao').value.trim(),
+    quantidade: document.getElementById('f_quantidade').value.trim() || NA,
+    lote_mando: document.getElementById('f_lote_mando').value.trim() || NA,
+    lote_fornecedor: document.getElementById('f_lote_fornecedor').value.trim() || NA,
+    data_entrada: document.getElementById('f_data_entrada').value || hoje(),
+  };
+}
+
+async function adicionar(limparDepois) {
+  const msg = document.getElementById('form-msg');
+  msg.textContent = '';
+
+  const d = dadosForm();
+  const resp = document.getElementById('resp').value.trim();
+
+  if (!d.part_number && !d.descricao) {
+    msg.textContent = 'Informe o PART NUMBER ou a DESCRIÇÃO.';
+    return;
+  }
+  if (!resp) {
+    msg.textContent = 'Selecione o responsável.';
+    return;
+  }
+
+  const reg = Object.assign({}, d, {
+    responsavel: resp,
+    criado: Date.now(),
+    origem: ORIGEM
+  });
+
+  try {
+    await db.ref(REF_LEITURAS).push(reg);
+    msg.className = 'ok';
+    msg.textContent = 'Linha adicionada.';
+    setTimeout(() => msg.textContent = '', 1800);
+    if (limparDepois) limparForm();
+  } catch (e) {
+    msg.className = 'err';
+    msg.textContent = 'Falha ao salvar: ' + e.message;
+  }
+}
+
+function adicionarLimpar() {
+  adicionar(true);
+}
+
+function limparForm() {
+  ['f_part_number', 'f_descricao', 'f_quantidade',
+   'f_lote_mando', 'f_lote_fornecedor'].forEach(id => {
+    document.getElementById(id).value = '';
+  });
+  document.getElementById('f_data_entrada').value = hoje();
+  document.getElementById('busca').focus();
+}
+
+// ===================== TABELA =====================
+function renderTabela() {
+  const tb = document.querySelector('#tabela tbody');
+  const vazio = document.getElementById('vazio');
+
+  tb.innerHTML = leituras.map(l => {
+    const cls = [l.quantidade, l.lote_mando, l.lote_fornecedor]
+      .some(v => String(v).toUpperCase() === NA) ? ' class="na"' : '';
+    return `<tr${cls}>
+      <td>${esc(l.part_number || '')}</td>
+      <td>${esc((l.descricao || '').substring(0, 30))}</td>
+      <td>${esc(l.quantidade || '')}</td>
+      <td>${esc(l.lote_mando || '')}</td>
+      <td>${esc(l.lote_fornecedor || '')}</td>
+      <td>${esc(l.data_entrada || '')}</td>
+      <td>${esc((l.responsavel || '').substring(0, 14))}</td>
+      <td style="color:#b91c1c;cursor:pointer"
+          onclick="excluirLinha('${l._id}')">✕</td>
+    </tr>`;
+  }).join('');
+
+  vazio.style.display = leituras.length ? 'none' : 'block';
+
+  document.getElementById('cnt').textContent =
+    leituras.length + ' linha' + (leituras.length === 1 ? '' : 's');
+  document.getElementById('badge').textContent = leituras.length;
+
+  const pns = new Set(leituras.map(l => l.part_number).filter(Boolean));
+  document.getElementById('cnt-pn').textContent =
+    pns.size ? pns.size + ' PNs' : '';
+}
+
+async function excluirLinha(id) {
+  if (!confirm('Remover esta linha?')) return;
+  try {
+    await db.ref(`${REF_LEITURAS}/${id}`).remove();
+  } catch (e) {
+    alert('Erro: ' + e.message);
+  }
+}
+
+async function limparTudo() {
+  if (!leituras.length) return;
+  if (!confirm(`Remover todas as ${leituras.length} linhas?\n` +
+               'Gere o Excel antes, se precisar guardar.')) return;
+  try {
+    await db.ref(REF_LEITURAS).remove();
+  } catch (e) {
+    alert('Erro: ' + e.message);
+  }
+}
+
+// ===================== EXCEL =====================
+function exportar() {
+  if (!leituras.length) {
+    alert('Nenhuma linha para exportar.');
+    return;
+  }
+
+  const dados = leituras.map(l => ([
+    l.part_number || '',
+    l.descricao || '',
+    l.quantidade || '',
+    l.lote_mando || '',
+    l.lote_fornecedor || '',
+    l.data_entrada || '',
+    l.responsavel || ''
+  ]));
+
+  const cab = [[
+    'PART NUMBER', 'DESCRIÇÃO', 'QUANTIDADE', 'LOTE MANDO',
+    'LOTE FORNECEDOR', 'DATA DE ENTRADA', 'RESPONSÁVEL'
+  ]];
+
+  const ws = XLSX.utils.aoa_to_sheet(cab.concat(dados));
+  ws['!cols'] = [
+    { wch: 24 }, { wch: 40 }, { wch: 12 }, { wch: 20 },
+    { wch: 22 }, { wch: 16 }, { wch: 22 }
+  ];
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Inspecao');
+
+  const nome = 'Inspecao_' + hoje() + '.xlsx';
+  XLSX.writeFile(wb, nome);
+}
+
+// ===================== SCANNER =====================
+let streamScan = null, scanLoop = null;
+
+async function toggleScan() {
+  const box = document.getElementById('scan-box');
+  const video = document.getElementById('scan-video');
+
+  if (box.style.display === 'flex') {
+    fecharScan();
+    return;
+  }
+
+  try {
+    streamScan = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment' }
+    });
+    video.srcObject = streamScan;
+    await video.play();
+    box.style.display = 'flex';
+
+    if ('BarcodeDetector' in window) {
+      const det = new BarcodeDetector({
+        formats: ['code_128', 'code_39', 'ean_13', 'qr_code', 'data_matrix']
+      });
+      scanLoop = setInterval(async () => {
+        try {
+          const codes = await det.detect(video);
+          if (codes.length) {
+            document.getElementById('busca').value = codes[0].rawValue;
+            fecharScan();
+            buscar();
+          }
+        } catch (e) {}
+      }, 300);
+    } else {
+      alert('Leitor automático indisponível neste navegador.\n' +
+            'Digite o código manualmente.');
+    }
+  } catch (e) {
+    alert('Não foi possível abrir a câmera: ' + e.message);
+  }
+}
+
+function fecharScan() {
+  if (scanLoop) { clearInterval(scanLoop); scanLoop = null; }
+  if (streamScan) {
+    streamScan.getTracks().forEach(t => t.stop());
+    streamScan = null;
+  }
+  document.getElementById('scan-box').style.display = 'none';
+}
+
+// ===================== ABAS =====================
+function mudarAba(nome) {
+  ['leitura', 'linhas', 'catalogo'].forEach(n => {
+    document.getElementById('tab-' + n).classList.toggle(
+      'active', n === nome);
+    const b = document.getElementById('tabbtn-' + n);
+    b.classList.toggle('btn-ghost', n !== nome);
+    b.classList.toggle('btn-teal', n === nome);
+  });
+  if (nome === 'catalogo') renderCatalogo();
+}
+
+// ===================== UTIL =====================
+function esc(t) {
+  return String(t == null ? '' : t)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// ===================== INIT =====================
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('f_data_entrada').value = hoje();
+  conectar();
+  mudarAba('leitura');
+});
+</script>
+</body>
+</html>
