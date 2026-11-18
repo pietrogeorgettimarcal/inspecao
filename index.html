@@ -10,6 +10,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <style>
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{margin:0;height:100%;font-family:-apple-system,BlinkMacSystemFont,
@@ -66,16 +67,28 @@
   .fita .btn{flex:1}
   .count{font-size:13px;font-weight:700;color:#002c5f;
          display:flex;justify-content:space-between;padding:6px 2px}
+  .empty{text-align:center;color:#8a97a5;padding:32px 12px;font-size:14px}
+
+  /* ===== scanner ===== */
   #scan-box{display:none;position:fixed;inset:0;background:#000;z-index:99;
             flex-direction:column}
-  #scan-box video{flex:1;object-fit:cover;width:100%;background:#000}
-  #scan-box .sc-bar{background:#000;color:#fff;padding:12px 14px;
-                    display:flex;justify-content:space-between;
-                    align-items:center;gap:10px;font-size:14px}
-  #scan-box button{background:#fff;color:#000;border:none;border-radius:6px;
-                   padding:10px 16px;font-weight:700;font-size:14px}
-  #scan-msg{font-size:12px;color:#f39c12;margin-top:4px;line-height:1.3}
-  .empty{text-align:center;color:#8a97a5;padding:32px 12px;font-size:14px}
+  #scan-top{background:#000;color:#fff;padding:10px 14px;
+            display:flex;justify-content:space-between;align-items:center;
+            gap:10px}
+  #scan-titulo{font-size:14px;font-weight:700}
+  #scan-top button,#scan-bottom button{background:#fff;color:#000;
+            border:none;border-radius:6px;padding:9px 14px;
+            font-weight:700;font-size:13px}
+  #qr-reader{flex:1;width:100%;position:relative;overflow:hidden;
+             background:#000;min-height:200px}
+  #qr-reader video{width:100%!important;height:100%!important;
+                   object-fit:cover!important;display:block}
+  #qr-reader__dashboard,#qr-reader__header_message,
+  #qr-reader__status_span{display:none!important}
+  #scan-bottom{background:#000;padding:10px 14px;
+               display:flex;justify-content:space-between;
+               align-items:center;gap:10px}
+  #scan-msg{font-size:12px;color:#f39c12;flex:1;line-height:1.3}
 </style>
 </head>
 <body>
@@ -87,7 +100,6 @@
 
 <div class="wrap">
 
-  <!-- ============ ABA NOVA LEITURA ============ -->
   <div class="tabline active" id="tab-leitura">
 
     <div class="bipe">
@@ -175,7 +187,6 @@
 
   </div>
 
-  <!-- ============ ABA LINHAS ============ -->
   <div class="tabline" id="tab-linhas">
     <div class="count">
       <span id="cnt">0 linhas</span>
@@ -200,7 +211,6 @@
             onclick="limparTudo()">LIMPAR TODAS AS LINHAS</button>
   </div>
 
-  <!-- ============ ABA CATÁLOGO ============ -->
   <div class="tabline" id="tab-catalogo">
     <div class="card">
       <label class="lbl">Buscar no catálogo</label>
@@ -219,7 +229,6 @@
 
 </div>
 
-<!-- abas -->
 <div class="fita">
   <button class="btn btn-ghost" id="tabbtn-leitura"
           onclick="mudarAba('leitura')">Nova</button>
@@ -231,15 +240,15 @@
           onclick="exportar()">📥</button>
 </div>
 
-<!-- scanner -->
 <div id="scan-box">
-  <video id="scan-video" autoplay muted playsinline></video>
-  <div class="sc-bar">
-    <div style="flex:1">
-      <div id="scan-titulo">Aponte para a etiqueta</div>
-      <div id="scan-msg"></div>
-    </div>
+  <div id="scan-top">
+    <div id="scan-titulo">Aponte para a etiqueta</div>
     <button onclick="fecharScan()">Fechar</button>
+  </div>
+  <div id="qr-reader"></div>
+  <div id="scan-bottom">
+    <div id="scan-msg"></div>
+    <button onclick="entradaManual()">Digitar</button>
   </div>
 </div>
 
@@ -344,7 +353,8 @@ async function novoResponsavel() {
 
 // ===================== LEITURA DE ETIQUETAS =====================
 function soAlnum(txt) {
-  return String(txt == null ? '' : txt).toUpperCase().replace(/[^A-Z0-9]/g, '');
+  return String(txt == null ? '' : txt)
+    .toUpperCase().replace(/[^A-Z0-9]/g, '');
 }
 
 function detectarTipo(bruto) {
@@ -358,8 +368,7 @@ function detectarTipo(bruto) {
 }
 
 // MANDO: P + zeros + PN + zeros + LOTE + zeros + QTD
-// O PN vem truncado e cheio de zeros à direita — não se corta por regex,
-// porque "BH9003Z100" termina em "00". A resolução é feita contra o catálogo.
+// P00000000000000BH9003Z10000000000VKRA000600
 function parseMando(bruto) {
   const t = soAlnum(bruto);
   if (!t) return null;
@@ -402,35 +411,42 @@ function parseFornecedor(bruto) {
 }
 
 // Resolve o PN da etiqueta contra o catálogo do Cadastro.
-// A etiqueta traz BH9003Z100 + zeros; o catálogo tem BH9003Z100.D.
+// A etiqueta traz BH9003Z100 + zeros de preenchimento; o cadastro tem
+// BH9003Z100.D. A comparação descarta os zeros à direita da etiqueta.
 function resolverPn(pnBruto) {
   const alvo = soAlnum(pnBruto);
   if (!alvo) return { produto: null, motivo: 'vazio', candidatos: [] };
 
-  const exatos = [], catPrefixo = [], parcial = [];
+  const base = alvo.replace(/0+$/, '');
+  const chave = base.length >= 5 ? base : alvo;
+
+  const exatos = [], prefixos = [], parciais = [];
 
   produtos.forEach(p => {
     const n = soAlnum(p.pn);
     if (!n) return;
-    if (n === alvo) exatos.push(p);
-    else if (alvo.startsWith(n)) catPrefixo.push(p);   // catálogo ⊂ etiqueta
-    else if (n.startsWith(alvo) || alvo.includes(n) || n.includes(alvo))
-      parcial.push(p);
+
+    if (n === alvo || n === chave) { exatos.push(p); return; }
+    if (n.startsWith(alvo)) { prefixos.push(p); return; }
+    if (chave.length >= 6 && n.startsWith(chave)) { prefixos.push(p); return; }
+    if (chave.length >= 4 && (n.includes(chave) || chave.includes(n))) {
+      parciais.push(p);
+    }
   });
 
-  const escolher = (lista, desc) => {
-    const ord = lista.slice().sort((a, b) =>
-      desc ? b.pn.length - a.pn.length : a.pn.length - b.pn.length);
+  const escolher = lista => {
+    const ord = lista.slice().sort((a, b) => a.pn.length - b.pn.length);
     return {
       produto: ord[0],
-      motivo: lista.length === 1 ? (desc ? 'prefixo' : 'contem') : 'multiplo',
+      motivo: lista.length === 1 ? 'prefixo' : 'multiplo',
       candidatos: lista.length === 1 ? [] : ord.slice(0, 6)
     };
   };
 
-  if (exatos.length) return escolher(exatos, false);
-  if (catPrefixo.length) return escolher(catPrefixo, true); // o mais específico
-  if (parcial.length) return escolher(parcial, false);
+  if (exatos.length) return escolher(exatos);
+  if (prefixos.length) return escolher(prefixos);
+  if (parciais.length) return escolher(parciais);
+
   return { produto: null, motivo: 'nenhum', candidatos: [] };
 }
 
@@ -440,10 +456,149 @@ function setBipMsg(html, kind) {
   el.innerHTML = html || '';
 }
 
+// ===================== SCANNER (html5-qrcode) =====================
+let html5Qr = null;
+let scanRodando = false;
+let scanCb = null;
+
+function setScanMsg(txt) {
+  const el = document.getElementById('scan-msg');
+  if (el) el.textContent = txt || '';
+}
+
+const FORMATOS_QR = [
+  'QR_CODE', 'DATA_MATRIX', 'CODE_128', 'CODE_39', 'CODE_93',
+  'EAN_13', 'EAN_8', 'UPC_A', 'UPC_E', 'ITF', 'CODABAR'
+];
+
+function formatosSuportados() {
+  const F = window.Html5QrcodeSupportedFormats || {};
+  const out = [];
+  FORMATOS_QR.forEach(k => {
+    if (F[k] !== undefined && F[k] !== null) out.push(F[k]);
+  });
+  return out.length ? out : undefined;
+}
+
+// Garante a lib carregada (CDN principal no <head>, reserva aqui).
+function carregarHtml5Qrcode() {
+  if (window.Html5Qrcode) return Promise.resolve(true);
+
+  const urls = [
+    'https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js',
+    'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js'
+  ];
+
+  return urls.reduce((p, url) => p.then(ok => ok ? true : new Promise(res => {
+    const s = document.createElement('script');
+    s.src = url;
+    s.async = true;
+    s.onload = () => res(!!window.Html5Qrcode);
+    s.onerror = () => res(false);
+    document.head.appendChild(s);
+  })), Promise.resolve(false));
+}
+
+async function abrirCamera(cb) {
+  const box = document.getElementById('scan-box');
+
+  if (box.style.display === 'flex' && scanRodando) {
+    await fecharScan();
+    return;
+  }
+
+  scanCb = cb || null;
+  box.style.display = 'flex';
+  setScanMsg('Abrindo a câmera…');
+
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    setScanMsg('Este navegador não libera a câmera. Use "Digitar".');
+    return;
+  }
+
+  const okLib = await carregarHtml5Qrcode();
+  if (!okLib || typeof Html5Qrcode === 'undefined') {
+    setScanMsg('Leitor não carregou. Toque em "Digitar" para inserir o código.');
+    return;
+  }
+
+  try {
+    if (!html5Qr) {
+      html5Qr = new Html5Qrcode('qr-reader', { verbose: false });
+    }
+
+    await html5Qr.start(
+      { facingMode: 'environment' },
+      {
+        fps: 10,
+        qrbox: (w, h) => {
+          const m = Math.floor(Math.min(w, h) * 0.75);
+          return { width: m, height: m };
+        },
+        formatsToSupport: formatosSuportados(),
+        experimentalFeatures: { useBarCodeDetectorIfSupported: true }
+      },
+      texto => entregarScan(texto),
+      () => {}   // "não encontrado" é normal entre frames
+    );
+
+    scanRodando = true;
+    setScanMsg('Aponte para a etiqueta');
+  } catch (e) {
+    scanRodando = false;
+    const msg = (e && e.message) ? e.message : String(e);
+    setScanMsg('Não foi possível abrir a câmera: ' + msg +
+               ' — toque em "Digitar".');
+  }
+}
+
+function entregarScan(raw) {
+  if (!raw) return;
+  const cb = scanCb;
+  scanCb = null;
+  fecharScan().then(() => {
+    if (cb) cb(String(raw).trim());
+  });
+}
+
+async function fecharScan() {
+  const box = document.getElementById('scan-box');
+  box.style.display = 'none';
+  setScanMsg('');
+
+  const rodando = scanRodando;
+  scanRodando = false;
+
+  if (html5Qr) {
+    try { if (rodando) await html5Qr.stop(); } catch (e) {}
+    try { html5Qr.clear(); } catch (e) {}
+    html5Qr = null;
+  }
+
+  const alvo = document.getElementById('qr-reader');
+  if (alvo) alvo.innerHTML = '';
+}
+
+function entradaManual() {
+  const cb = scanCb;
+  const v = prompt('Digite ou cole o código da etiqueta:');
+  if (v === null) return;
+
+  const texto = v.trim();
+  if (!texto) return;
+
+  scanCb = null;
+  fecharScan();
+
+  if (cb) cb(texto);
+  else processarEtiqueta(texto, 'auto');
+}
+
+// ===================== BIPE =====================
 function bipar(modo) {
   const titulo = document.getElementById('scan-titulo');
   if (modo === 'mando') titulo.textContent = 'Bipe a etiqueta da MANDO';
-  else if (modo === 'fornecedor') titulo.textContent = 'Bipe a etiqueta do FORNECEDOR';
+  else if (modo === 'fornecedor') titulo.textContent = 'Etiqueta do FORNECEDOR';
   else if (modo === 'pn') titulo.textContent = 'Bipe o código do produto';
   else titulo.textContent = 'Aponte para a etiqueta';
 
@@ -467,6 +622,7 @@ function processarEtiqueta(raw, modo) {
         <span class="tag">${esc(raw)}</span></div>`);
       return;
     }
+
     const r = resolverPn(d.pn);
     let pn = d.pn, descricao = '';
     if (r.produto) { pn = r.produto.pn; descricao = r.produto.descricao; }
@@ -479,10 +635,11 @@ function processarEtiqueta(raw, modo) {
 
     let msg = `<div class="ok"><b>MANDO lido</b><br>
       PN etiqueta: ${esc(d.pn)} · Lote: ${esc(d.lote)} · Qtd: ${esc(d.quantidade)}`;
+
     if (r.produto) {
       msg += `<br>Catálogo: ${esc(r.produto.pn)} — ${esc(r.produto.descricao)}`;
       if (r.motivo === 'multiplo') {
-        msg += `<br><span style="color:#b45309">${r.candidatos.length} PNs parecidos — confira o PN.</span>`;
+        msg += `<br><span style="color:#b45309">${r.candidatos.length} PNs parecidos — confirme abaixo.</span>`;
       }
     } else {
       msg += `<br><span style="color:#b45309">PN não encontrado no Cadastro.</span>`;
@@ -866,187 +1023,6 @@ function exportar() {
   XLSX.writeFile(wb, nome);
 }
 
-// ===================== SCANNER =====================
-let streamScan = null, scanLoop = null, scanCb = null;
-let scanAtivo = false, zxReader = null;
-
-function setScanMsg(txt) {
-  const el = document.getElementById('scan-msg');
-  if (el) el.textContent = txt || '';
-}
-
-// Carrega ZXing sob demanda (com dois CDNs de reserva).
-function carregarZXing() {
-  if (window.ZXing) return Promise.resolve(true);
-
-  const urls = [
-    "https://cdn.jsdelivr.net/npm/@zxing/library@0.20.0/umd/index.min.js",
-    "https://unpkg.com/@zxing/library@0.20.0/umd/index.min.js"
-  ];
-
-  return urls.reduce((promise, url) =>
-    promise.then(ok => ok ? true : new Promise(res => {
-      const s = document.createElement('script');
-      s.src = url;
-      s.async = true;
-      s.onload = () => res(!!window.ZXing);
-      s.onerror = () => res(false);
-      document.head.appendChild(s);
-    }))
-  , Promise.resolve(false));
-}
-
-function criarLeitorZXing() {
-  if (zxReader) return zxReader;
-  const ZX = window.ZXing;
-  if (!ZX) return null;
-
-  const hints = new Map();
-  const F = ZX.BarcodeFormat;
-  hints.set(ZX.DecodeHintType.POSSIBLE_FORMATS, [
-    F.QR_CODE, F.DATA_MATRIX, F.CODE_128, F.CODE_39, F.CODE_93,
-    F.ITF, F.PDF_417, F.EAN_13, F.UPC_A
-  ]);
-  hints.set(ZX.DecodeHintType.TRY_HARDER, true);
-
-  zxReader = new ZX.BrowserMultiFormatReader(hints, {
-    delayBetweenScanAttempts: 250,
-    delayBetweenScanSuccess: 600
-  });
-  return zxReader;
-}
-
-function entregarScan(raw) {
-  if (!scanAtivo) return;
-  scanAtivo = false;
-
-  const cb = scanCb;
-  scanCb = null;
-  fecharScan();
-
-  if (cb && raw) cb(String(raw).trim());
-}
-
-async function abrirCamera(cb) {
-  const box = document.getElementById('scan-box');
-  const video = document.getElementById('scan-video');
-
-  if (box.style.display === 'flex') {
-    fecharScan();
-    return;
-  }
-
-  scanCb = cb || null;
-  setScanMsg('Abrindo a câmera…');
-
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    setScanMsg('Este navegador não libera a câmera. ' +
-               'Use HTTPS e permita o acesso, ou digite o código.');
-    box.style.display = 'flex';
-    return;
-  }
-
-  try {
-    streamScan = await navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: { ideal: 'environment' },
-        width: { ideal: 1280 },
-        height: { ideal: 720 }
-      },
-      audio: false
-    });
-  } catch (e) {
-    box.style.display = 'flex';
-    setScanMsg('Não foi possível abrir a câmera: ' + e.message +
-               ' — digite o código manualmente.');
-    return;
-  }
-
-  video.srcObject = streamScan;
-  video.setAttribute('playsinline', '');
-  video.setAttribute('autoplay', '');
-  video.muted = true;
-
-  try { await video.play(); } catch (e) {}
-
-  box.style.display = 'flex';
-  scanAtivo = true;
-
-  // 1) Detector nativo (Chrome/Android)
-  if ('BarcodeDetector' in window) {
-    try {
-      const det = new BarcodeDetector({
-        formats: ['qr_code', 'data_matrix', 'code_128', 'code_39',
-                  'ean_13', 'pdf417', 'itf']
-      });
-      setScanMsg('Aponte para a etiqueta');
-      scanLoop = setInterval(async () => {
-        if (!scanAtivo) return;
-        try {
-          const codes = await det.detect(video);
-          if (codes && codes.length && codes[0].rawValue) {
-            entregarScan(codes[0].rawValue);
-          }
-        } catch (e) {}
-      }, 250);
-      return;
-    } catch (e) {
-      console.warn('BarcodeDetector falhou, usando ZXing:', e);
-    }
-  }
-
-  // 2) ZXing (iPhone/Safari, Firefox e qualquer navegador sem detector)
-  setScanMsg('Preparando o leitor…');
-  const okZx = await carregarZXing();
-
-  if (!okZx) {
-    setScanMsg('Não foi possível carregar o leitor. ' +
-               'Toque em Fechar e digite o código.');
-    return;
-  }
-
-  const reader = criarLeitorZXing();
-  if (!reader) {
-    setScanMsg('Leitor não disponível. Digite o código manualmente.');
-    return;
-  }
-
-  setScanMsg('Aponte para a etiqueta');
-
-  scanLoop = setInterval(async () => {
-    if (!scanAtivo) return;
-    if (!video.videoWidth) return;
-    try {
-      const r = await reader.decodeFromVideoElement(video);
-      if (r && r.getText) entregarScan(r.getText());
-    } catch (e) {
-      // NotFoundException é o normal entre frames
-    }
-  }, 320);
-}
-
-function fecharScan() {
-  scanAtivo = false;
-
-  if (scanLoop) { clearInterval(scanLoop); scanLoop = null; }
-
-  if (zxReader) {
-    try { zxReader.reset(); } catch (e) {}
-    zxReader = null;
-  }
-
-  if (streamScan) {
-    streamScan.getTracks().forEach(t => { try { t.stop(); } catch (e) {} });
-    streamScan = null;
-  }
-
-  const video = document.getElementById('scan-video');
-  if (video) { try { video.srcObject = null; } catch (e) {} }
-
-  document.getElementById('scan-box').style.display = 'none';
-  setScanMsg('');
-}
-
 // ===================== ABAS =====================
 function mudarAba(nome) {
   ['leitura', 'linhas', 'catalogo'].forEach(n => {
@@ -1071,8 +1047,6 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('f_data_entrada').value = hoje();
   conectar();
   mudarAba('leitura');
-  // pré-carrega o decodificador em segundo plano
-  setTimeout(() => carregarZXing(), 1500);
 });
 </script>
 </body>
