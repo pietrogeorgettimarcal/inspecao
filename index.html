@@ -68,12 +68,13 @@
          display:flex;justify-content:space-between;padding:6px 2px}
   #scan-box{display:none;position:fixed;inset:0;background:#000;z-index:99;
             flex-direction:column}
-  #scan-box video{flex:1;object-fit:cover;width:100%}
-  #scan-box .sc-bar{background:#000;color:#fff;padding:14px;
+  #scan-box video{flex:1;object-fit:cover;width:100%;background:#000}
+  #scan-box .sc-bar{background:#000;color:#fff;padding:12px 14px;
                     display:flex;justify-content:space-between;
-                    align-items:center;font-size:14px}
+                    align-items:center;gap:10px;font-size:14px}
   #scan-box button{background:#fff;color:#000;border:none;border-radius:6px;
-                   padding:8px 16px;font-weight:700}
+                   padding:10px 16px;font-weight:700;font-size:14px}
+  #scan-msg{font-size:12px;color:#f39c12;margin-top:4px;line-height:1.3}
   .empty{text-align:center;color:#8a97a5;padding:32px 12px;font-size:14px}
 </style>
 </head>
@@ -232,9 +233,12 @@
 
 <!-- scanner -->
 <div id="scan-box">
-  <video id="scan-video" playsinline></video>
+  <video id="scan-video" autoplay muted playsinline></video>
   <div class="sc-bar">
-    <span id="scan-titulo">Aponte para o código</span>
+    <div style="flex:1">
+      <div id="scan-titulo">Aponte para a etiqueta</div>
+      <div id="scan-msg"></div>
+    </div>
     <button onclick="fecharScan()">Fechar</button>
   </div>
 </div>
@@ -354,24 +358,25 @@ function detectarTipo(bruto) {
 }
 
 // MANDO: P + zeros + PN + zeros + LOTE + zeros + QTD
+// O PN vem truncado e cheio de zeros à direita — não se corta por regex,
+// porque "BH9003Z100" termina em "00". A resolução é feita contra o catálogo.
 function parseMando(bruto) {
   const t = soAlnum(bruto);
   if (!t) return null;
 
   const corpo = t.startsWith('P') ? t.slice(1) : t;
-  const m = corpo.match(/([A-Z]{2,10})0*(\d{1,6})$/);
+
+  let m = corpo.match(/([A-Z]{2,10})0*(\d{1,6})$/);
+  if (!m) m = corpo.match(/([A-Z][A-Z0-9]{1,9})0*(\d{1,6})$/);
   if (!m) return null;
 
   const lote = m[1];
-  const qtdTxt = m[2];
-  const quantidade = String(parseInt(qtdTxt, 10) || 0);
+  const quantidade = String(parseInt(m[2], 10) || 0);
 
-  let resto = corpo.slice(0, m.index);
-  let pn = resto.replace(/^0+/, '');
-  pn = pn.replace(/0{4,}$/, '');
+  const resto = corpo.slice(0, m.index).replace(/^0+/, '');
+  if (!resto) return null;
 
-  if (!pn) return null;
-  return { pn, lote, quantidade, bruto: t };
+  return { pn: resto, lote, quantidade, bruto: t };
 }
 
 // FORNECEDOR: prid889595 · 889595 · "DASOL 889595 2026-11-12"
@@ -396,38 +401,43 @@ function parseFornecedor(bruto) {
   return null;
 }
 
-// Resolve o PN truncado contra o catálogo do Cadastro
+// Resolve o PN da etiqueta contra o catálogo do Cadastro.
+// A etiqueta traz BH9003Z100 + zeros; o catálogo tem BH9003Z100.D.
 function resolverPn(pnBruto) {
   const alvo = soAlnum(pnBruto);
   if (!alvo) return { produto: null, motivo: 'vazio', candidatos: [] };
 
-  const exatos = [], prefixo = [], contem = [];
+  const exatos = [], catPrefixo = [], parcial = [];
 
   produtos.forEach(p => {
     const n = soAlnum(p.pn);
+    if (!n) return;
     if (n === alvo) exatos.push(p);
-    else if (n.startsWith(alvo)) prefixo.push(p);
-    else if (n.includes(alvo) || alvo.includes(n)) contem.push(p);
+    else if (alvo.startsWith(n)) catPrefixo.push(p);   // catálogo ⊂ etiqueta
+    else if (n.startsWith(alvo) || alvo.includes(n) || n.includes(alvo))
+      parcial.push(p);
   });
 
-  if (exatos.length === 1) return { produto: exatos[0], motivo: 'exato', candidatos: [] };
-  if (prefixo.length === 1) return { produto: prefixo[0], motivo: 'prefixo', candidatos: [] };
-  if (prefixo.length > 1) {
-    prefixo.sort((a, b) => a.pn.length - b.pn.length);
-    return { produto: prefixo[0], motivo: 'multiplo', candidatos: prefixo.slice(0, 6) };
-  }
-  if (contem.length === 1) return { produto: contem[0], motivo: 'contem', candidatos: [] };
-  if (contem.length > 1) {
-    contem.sort((a, b) => a.pn.length - b.pn.length);
-    return { produto: contem[0], motivo: 'multiplo', candidatos: contem.slice(0, 6) };
-  }
+  const escolher = (lista, desc) => {
+    const ord = lista.slice().sort((a, b) =>
+      desc ? b.pn.length - a.pn.length : a.pn.length - b.pn.length);
+    return {
+      produto: ord[0],
+      motivo: lista.length === 1 ? (desc ? 'prefixo' : 'contem') : 'multiplo',
+      candidatos: lista.length === 1 ? [] : ord.slice(0, 6)
+    };
+  };
+
+  if (exatos.length) return escolher(exatos, false);
+  if (catPrefixo.length) return escolher(catPrefixo, true); // o mais específico
+  if (parcial.length) return escolher(parcial, false);
   return { produto: null, motivo: 'nenhum', candidatos: [] };
 }
 
 function setBipMsg(html, kind) {
   const el = document.getElementById('bip-msg');
   el.className = kind || '';
-  el.innerHTML = html;
+  el.innerHTML = html || '';
 }
 
 function bipar(modo) {
@@ -453,7 +463,8 @@ function processarEtiqueta(raw, modo) {
   if (tipo === 'mando') {
     const d = parseMando(raw);
     if (!d) {
-      setBipMsg(`Etiqueta Mando fora do padrão.<br><span class="tag">${esc(raw)}</span>`, 'err');
+      setBipMsg(`<div class="err">Etiqueta Mando fora do padrão.<br>
+        <span class="tag">${esc(raw)}</span></div>`);
       return;
     }
     const r = resolverPn(d.pn);
@@ -478,6 +489,10 @@ function processarEtiqueta(raw, modo) {
     }
     msg += `</div>`;
     setBipMsg(msg);
+
+    if (r.motivo === 'multiplo') mostrarCandidatosBip(r.candidatos);
+    else limparCandidatos();
+
     document.getElementById('f_lote_fornecedor').focus();
     return;
   }
@@ -485,7 +500,8 @@ function processarEtiqueta(raw, modo) {
   if (tipo === 'fornecedor') {
     const d = parseFornecedor(raw);
     if (!d) {
-      setBipMsg(`Etiqueta de fornecedor fora do padrão.<br><span class="tag">${esc(raw)}</span>`, 'err');
+      setBipMsg(`<div class="err">Etiqueta de fornecedor fora do padrão.<br>
+        <span class="tag">${esc(raw)}</span></div>`);
       return;
     }
     document.getElementById('f_lote_fornecedor').value = d.lote;
@@ -496,8 +512,26 @@ function processarEtiqueta(raw, modo) {
     return;
   }
 
-  setBipMsg(`Código não reconhecido.<br><span class="tag">${esc(raw)}</span>
-    <br>Use os botões Mando / Forn. para forçar o tipo.`, 'err');
+  setBipMsg(`<div class="err">Código não reconhecido.<br>
+    <span class="tag">${esc(raw)}</span><br>
+    Use os botões Mando / Forn. para forçar o tipo.</div>`);
+}
+
+function mostrarCandidatosBip(lista) {
+  const box = document.getElementById('cands');
+  box.innerHTML = `<div class="hint" style="margin-bottom:6px">
+    PNs parecidos com a etiqueta — toque para confirmar:</div>` +
+    lista.map(p =>
+      `<div class="cand" onclick="escolherPorPn('${esc(p.pn)}')">
+        <b>${esc(p.pn)}</b><br>
+        <span style="color:#5a6b7a">${esc(p.descricao)}</span>
+        ${detalheExtra(p)}
+      </div>`).join('');
+}
+
+function limparCandidatos() {
+  document.getElementById('cands').innerHTML = '';
+  document.getElementById('busca-msg').textContent = '';
 }
 
 // ===================== BUSCA NO CATÁLOGO =====================
@@ -624,8 +658,7 @@ function escolherPorPn(pn) {
   if (!p) return;
   preencher(p);
   document.getElementById('busca').value = '';
-  document.getElementById('cands').innerHTML = '';
-  document.getElementById('busca-msg').textContent = '';
+  limparCandidatos();
   document.getElementById('f_quantidade').focus();
 }
 
@@ -742,6 +775,7 @@ function limparForm() {
   });
   document.getElementById('f_data_entrada').value = hoje();
   setBipMsg('');
+  limparCandidatos();
   document.getElementById('busca').focus();
 }
 
@@ -834,6 +868,64 @@ function exportar() {
 
 // ===================== SCANNER =====================
 let streamScan = null, scanLoop = null, scanCb = null;
+let scanAtivo = false, zxReader = null;
+
+function setScanMsg(txt) {
+  const el = document.getElementById('scan-msg');
+  if (el) el.textContent = txt || '';
+}
+
+// Carrega ZXing sob demanda (com dois CDNs de reserva).
+function carregarZXing() {
+  if (window.ZXing) return Promise.resolve(true);
+
+  const urls = [
+    "https://cdn.jsdelivr.net/npm/@zxing/library@0.20.0/umd/index.min.js",
+    "https://unpkg.com/@zxing/library@0.20.0/umd/index.min.js"
+  ];
+
+  return urls.reduce((promise, url) =>
+    promise.then(ok => ok ? true : new Promise(res => {
+      const s = document.createElement('script');
+      s.src = url;
+      s.async = true;
+      s.onload = () => res(!!window.ZXing);
+      s.onerror = () => res(false);
+      document.head.appendChild(s);
+    }))
+  , Promise.resolve(false));
+}
+
+function criarLeitorZXing() {
+  if (zxReader) return zxReader;
+  const ZX = window.ZXing;
+  if (!ZX) return null;
+
+  const hints = new Map();
+  const F = ZX.BarcodeFormat;
+  hints.set(ZX.DecodeHintType.POSSIBLE_FORMATS, [
+    F.QR_CODE, F.DATA_MATRIX, F.CODE_128, F.CODE_39, F.CODE_93,
+    F.ITF, F.PDF_417, F.EAN_13, F.UPC_A
+  ]);
+  hints.set(ZX.DecodeHintType.TRY_HARDER, true);
+
+  zxReader = new ZX.BrowserMultiFormatReader(hints, {
+    delayBetweenScanAttempts: 250,
+    delayBetweenScanSuccess: 600
+  });
+  return zxReader;
+}
+
+function entregarScan(raw) {
+  if (!scanAtivo) return;
+  scanAtivo = false;
+
+  const cb = scanCb;
+  scanCb = null;
+  fecharScan();
+
+  if (cb && raw) cb(String(raw).trim());
+}
 
 async function abrirCamera(cb) {
   const box = document.getElementById('scan-box');
@@ -845,54 +937,114 @@ async function abrirCamera(cb) {
   }
 
   scanCb = cb || null;
+  setScanMsg('Abrindo a câmera…');
+
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    setScanMsg('Este navegador não libera a câmera. ' +
+               'Use HTTPS e permita o acesso, ou digite o código.');
+    box.style.display = 'flex';
+    return;
+  }
 
   try {
     streamScan = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: 'environment' }
+      video: {
+        facingMode: { ideal: 'environment' },
+        width: { ideal: 1280 },
+        height: { ideal: 720 }
+      },
+      audio: false
     });
-    video.srcObject = streamScan;
-    await video.play();
+  } catch (e) {
     box.style.display = 'flex';
+    setScanMsg('Não foi possível abrir a câmera: ' + e.message +
+               ' — digite o código manualmente.');
+    return;
+  }
 
-    if ('BarcodeDetector' in window) {
+  video.srcObject = streamScan;
+  video.setAttribute('playsinline', '');
+  video.setAttribute('autoplay', '');
+  video.muted = true;
+
+  try { await video.play(); } catch (e) {}
+
+  box.style.display = 'flex';
+  scanAtivo = true;
+
+  // 1) Detector nativo (Chrome/Android)
+  if ('BarcodeDetector' in window) {
+    try {
       const det = new BarcodeDetector({
-        formats: ['code_128', 'code_39', 'ean_13', 'qr_code',
-                  'data_matrix', 'pdf417', 'itf']
+        formats: ['qr_code', 'data_matrix', 'code_128', 'code_39',
+                  'ean_13', 'pdf417', 'itf']
       });
+      setScanMsg('Aponte para a etiqueta');
       scanLoop = setInterval(async () => {
+        if (!scanAtivo) return;
         try {
           const codes = await det.detect(video);
-          if (codes.length) {
-            const raw = codes[0].rawValue;
-            const cbAtual = scanCb;
-            fecharScan();
-            if (cbAtual) cbAtual(raw);
+          if (codes && codes.length && codes[0].rawValue) {
+            entregarScan(codes[0].rawValue);
           }
         } catch (e) {}
       }, 250);
-    } else {
-      alert('Leitor automático indisponível neste navegador.\n' +
-            'Digite o código manualmente.');
+      return;
+    } catch (e) {
+      console.warn('BarcodeDetector falhou, usando ZXing:', e);
     }
-  } catch (e) {
-    alert('Não foi possível abrir a câmera: ' + e.message);
   }
+
+  // 2) ZXing (iPhone/Safari, Firefox e qualquer navegador sem detector)
+  setScanMsg('Preparando o leitor…');
+  const okZx = await carregarZXing();
+
+  if (!okZx) {
+    setScanMsg('Não foi possível carregar o leitor. ' +
+               'Toque em Fechar e digite o código.');
+    return;
+  }
+
+  const reader = criarLeitorZXing();
+  if (!reader) {
+    setScanMsg('Leitor não disponível. Digite o código manualmente.');
+    return;
+  }
+
+  setScanMsg('Aponte para a etiqueta');
+
+  scanLoop = setInterval(async () => {
+    if (!scanAtivo) return;
+    if (!video.videoWidth) return;
+    try {
+      const r = await reader.decodeFromVideoElement(video);
+      if (r && r.getText) entregarScan(r.getText());
+    } catch (e) {
+      // NotFoundException é o normal entre frames
+    }
+  }, 320);
 }
 
 function fecharScan() {
+  scanAtivo = false;
+
   if (scanLoop) { clearInterval(scanLoop); scanLoop = null; }
+
+  if (zxReader) {
+    try { zxReader.reset(); } catch (e) {}
+    zxReader = null;
+  }
+
   if (streamScan) {
-    streamScan.getTracks().forEach(t => t.stop());
+    streamScan.getTracks().forEach(t => { try { t.stop(); } catch (e) {} });
     streamScan = null;
   }
-  document.getElementById('scan-box').style.display = 'none';
-}
 
-function toggleScan() {
-  abrirCamera(raw => {
-    document.getElementById('busca').value = raw;
-    buscar();
-  });
+  const video = document.getElementById('scan-video');
+  if (video) { try { video.srcObject = null; } catch (e) {} }
+
+  document.getElementById('scan-box').style.display = 'none';
+  setScanMsg('');
 }
 
 // ===================== ABAS =====================
@@ -919,6 +1071,8 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('f_data_entrada').value = hoje();
   conectar();
   mudarAba('leitura');
+  // pré-carrega o decodificador em segundo plano
+  setTimeout(() => carregarZXing(), 1500);
 });
 </script>
 </body>
