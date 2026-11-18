@@ -41,14 +41,18 @@
   .btn-danger{background:#b91c1c;color:#fff}
   .btn-na{background:#b45309;color:#fff;padding:6px 12px;font-size:12px;
           width:auto;border-radius:6px}
-  .btn-sm{padding:8px 12px;font-size:13px;width:auto}
+  .btn-sm{padding:10px 12px;font-size:13px;width:auto}
   .hint{font-size:12px;color:#5a6b7a;margin-top:4px}
   .err{font-size:12px;color:#b91c1c;margin-top:6px}
   .ok{font-size:12px;color:#15803d;margin-top:6px}
+  .warn{font-size:12px;color:#b45309;margin-top:6px}
   .cand{background:#f8fafc;border:1px solid #d7dee6;border-radius:8px;
         padding:12px;margin-bottom:6px;cursor:pointer;font-size:14px}
   .cand:active{background:#e8f7e9;border-color:#00b2a9}
   .cand b{color:#002c5f}
+  .tag{font-size:11px;color:#8a97a5;display:block;margin-top:2px}
+  .bipe{background:#fffbe6;border:2px solid #e0c37a;border-radius:10px;
+        padding:14px;margin-bottom:12px}
   .tabline{display:none}
   .tabline.active{display:block}
   table{width:100%;border-collapse:collapse;font-size:12px}
@@ -85,6 +89,20 @@
   <!-- ============ ABA NOVA LEITURA ============ -->
   <div class="tabline active" id="tab-leitura">
 
+    <div class="bipe">
+      <label class="lbl" style="margin-top:0">Bipar etiqueta</label>
+      <div class="row">
+        <button class="btn btn-teal btn-sm" style="flex:2"
+                onclick="bipar('auto')">📷 Bipar etiqueta</button>
+        <button class="btn btn-ghost btn-sm" style="flex:1"
+                onclick="bipar('mando')">Mando</button>
+        <button class="btn btn-ghost btn-sm" style="flex:1"
+                onclick="bipar('fornecedor')">Forn.</button>
+      </div>
+      <div class="hint">Mando: P000…PN…LOTE…QTD · Fornecedor: prid889595</div>
+      <div id="bip-msg"></div>
+    </div>
+
     <div class="card">
       <label class="lbl">Responsável pela liberação</label>
       <div class="row">
@@ -102,7 +120,7 @@
                oninput="buscarPreview()"
                onkeydown="if(event.key==='Enter'){event.preventDefault();buscar()}">
         <button class="btn btn-ghost btn-sm" style="flex:0 0 auto"
-                onclick="toggleScan()">📷</button>
+                onclick="bipar('pn')">📷</button>
       </div>
       <div class="hint">Ex: 249 lista BC14024901.A e BC14124901.A</div>
       <div class="err" id="busca-msg"></div>
@@ -181,7 +199,7 @@
             onclick="limparTudo()">LIMPAR TODAS AS LINHAS</button>
   </div>
 
-  <!-- ============ ABA CATÁLOGO (somente leitura) ============ -->
+  <!-- ============ ABA CATÁLOGO ============ -->
   <div class="tabline" id="tab-catalogo">
     <div class="card">
       <label class="lbl">Buscar no catálogo</label>
@@ -216,7 +234,7 @@
 <div id="scan-box">
   <video id="scan-video" playsinline></video>
   <div class="sc-bar">
-    <span>Aponte para o código</span>
+    <span id="scan-titulo">Aponte para o código</span>
     <button onclick="fecharScan()">Fechar</button>
   </div>
 </div>
@@ -224,16 +242,14 @@
 <script>
 // ===================== CONFIG =====================
 const FB_CONFIG = {
-  apiKey: "AIzaSyB8kMScDummyKeyReplaceIfNeeded",
+  apiKey: "AIzaSyBQ7_k7huhS8oAyKp0OsbEajXFmrNxcrlo",
   authDomain: "kyro-7cb7a.firebaseapp.com",
   databaseURL: "https://kyro-7cb7a-default-rtdb.firebaseio.com",
   projectId: "kyro-7cb7a",
   storageBucket: "kyro-7cb7a.appspot.com"
 };
 
-// Catálogo vem do módulo Cadastro — NÃO é editado aqui
 const REF_PRODUTOS = "cadastros/produtos_mestre";
-
 const REF_RESPONS = "hl_inspecao/responsaveis";
 const REF_LEITURAS = "hl_inspecao/leituras";
 
@@ -264,7 +280,6 @@ function setSync(on) {
 }
 
 function escutar() {
-  // ----- catálogo do Cadastro -----
   db.ref(REF_PRODUTOS).on('value', snap => {
     const cru = snap.val() || {};
     const arr = Array.isArray(cru) ? cru : Object.values(cru);
@@ -274,7 +289,11 @@ function escutar() {
       .map(p => ({
         pn: String(p.partNumber || p.pn || '').trim().toUpperCase(),
         descricao: String(p.descricao || '').trim().toUpperCase(),
-        fornecedor: String(p.fornecedor || '').trim().toUpperCase()
+        fornecedor: String(p.fornecedor || '').trim().toUpperCase(),
+        codigoFornecedor:
+          String(p.codigoFornecedor || '').trim().toUpperCase(),
+        multiploCaixa: Number(p.multiploCaixa) || 0,
+        multiploPallet: Number(p.multiploPallet) || 0
       }))
       .filter(p => p.pn)
       .sort((a, b) => a.pn.localeCompare(b.pn));
@@ -282,14 +301,12 @@ function escutar() {
     renderCatalogo();
   }, err => console.warn("catalogo:", err));
 
-  // ----- responsáveis -----
   db.ref(REF_RESPONS).on('value', snap => {
     const v = snap.val() || {};
     responsaveis = Object.values(v).map(r => r.nome).filter(Boolean);
     renderResponsaveis();
   }, err => console.warn(err));
 
-  // ----- leituras -----
   db.ref(REF_LEITURAS).on('value', snap => {
     const v = snap.val() || {};
     leituras = Object.entries(v)
@@ -319,6 +336,168 @@ async function novoResponsavel() {
   } catch (e) {
     alert("Erro ao salvar: " + e.message);
   }
+}
+
+// ===================== LEITURA DE ETIQUETAS =====================
+function soAlnum(txt) {
+  return String(txt == null ? '' : txt).toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
+function detectarTipo(bruto) {
+  const t = soAlnum(bruto);
+  if (!t) return 'desconhecido';
+  if (t.startsWith('PRID')) return 'fornecedor';
+  if (/^P0{6,}/.test(t) && t.length >= 20) return 'mando';
+  if (t.length >= 24 && /\d{6}$/.test(t)) return 'mando';
+  if (/^\d{4,12}$/.test(t)) return 'fornecedor';
+  return 'desconhecido';
+}
+
+// MANDO: P + zeros + PN + zeros + LOTE + zeros + QTD
+function parseMando(bruto) {
+  const t = soAlnum(bruto);
+  if (!t) return null;
+
+  const corpo = t.startsWith('P') ? t.slice(1) : t;
+  const m = corpo.match(/([A-Z]{2,10})0*(\d{1,6})$/);
+  if (!m) return null;
+
+  const lote = m[1];
+  const qtdTxt = m[2];
+  const quantidade = String(parseInt(qtdTxt, 10) || 0);
+
+  let resto = corpo.slice(0, m.index);
+  let pn = resto.replace(/^0+/, '');
+  pn = pn.replace(/0{4,}$/, '');
+
+  if (!pn) return null;
+  return { pn, lote, quantidade, bruto: t };
+}
+
+// FORNECEDOR: prid889595 · 889595 · "DASOL 889595 2026-11-12"
+function parseFornecedor(bruto) {
+  const t = String(bruto == null ? '' : bruto).toUpperCase();
+  if (!t.trim()) return null;
+
+  let m = t.match(/PRID[^A-Z0-9]*([A-Z0-9]{3,20})/);
+  if (m) return { lote: m[1], fornecedor: 'DASOL', bruto: t };
+
+  m = t.match(/LOTE[^A-Z0-9]*([A-Z0-9]{3,20})/);
+  if (m) return { lote: m[1], fornecedor: '?', bruto: t };
+
+  let limpo = t.replace(/\d{4}[-/.]\d{1,2}[-/.]\d{1,2}/g, ' ');
+  limpo = limpo.replace(/\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4}/g, ' ');
+
+  const achados = limpo.match(/(?<!\d)\d{4,12}(?!\d)/g);
+  if (achados && achados.length) {
+    achados.sort((a, b) => b.length - a.length);
+    return { lote: achados[0], fornecedor: '?', bruto: t };
+  }
+  return null;
+}
+
+// Resolve o PN truncado contra o catálogo do Cadastro
+function resolverPn(pnBruto) {
+  const alvo = soAlnum(pnBruto);
+  if (!alvo) return { produto: null, motivo: 'vazio', candidatos: [] };
+
+  const exatos = [], prefixo = [], contem = [];
+
+  produtos.forEach(p => {
+    const n = soAlnum(p.pn);
+    if (n === alvo) exatos.push(p);
+    else if (n.startsWith(alvo)) prefixo.push(p);
+    else if (n.includes(alvo) || alvo.includes(n)) contem.push(p);
+  });
+
+  if (exatos.length === 1) return { produto: exatos[0], motivo: 'exato', candidatos: [] };
+  if (prefixo.length === 1) return { produto: prefixo[0], motivo: 'prefixo', candidatos: [] };
+  if (prefixo.length > 1) {
+    prefixo.sort((a, b) => a.pn.length - b.pn.length);
+    return { produto: prefixo[0], motivo: 'multiplo', candidatos: prefixo.slice(0, 6) };
+  }
+  if (contem.length === 1) return { produto: contem[0], motivo: 'contem', candidatos: [] };
+  if (contem.length > 1) {
+    contem.sort((a, b) => a.pn.length - b.pn.length);
+    return { produto: contem[0], motivo: 'multiplo', candidatos: contem.slice(0, 6) };
+  }
+  return { produto: null, motivo: 'nenhum', candidatos: [] };
+}
+
+function setBipMsg(html, kind) {
+  const el = document.getElementById('bip-msg');
+  el.className = kind || '';
+  el.innerHTML = html;
+}
+
+function bipar(modo) {
+  const titulo = document.getElementById('scan-titulo');
+  if (modo === 'mando') titulo.textContent = 'Bipe a etiqueta da MANDO';
+  else if (modo === 'fornecedor') titulo.textContent = 'Bipe a etiqueta do FORNECEDOR';
+  else if (modo === 'pn') titulo.textContent = 'Bipe o código do produto';
+  else titulo.textContent = 'Aponte para a etiqueta';
+
+  abrirCamera(raw => {
+    if (modo === 'pn') {
+      document.getElementById('busca').value = raw;
+      buscar();
+      return;
+    }
+    processarEtiqueta(raw, modo);
+  });
+}
+
+function processarEtiqueta(raw, modo) {
+  const tipo = (modo === 'auto' || !modo) ? detectarTipo(raw) : modo;
+
+  if (tipo === 'mando') {
+    const d = parseMando(raw);
+    if (!d) {
+      setBipMsg(`Etiqueta Mando fora do padrão.<br><span class="tag">${esc(raw)}</span>`, 'err');
+      return;
+    }
+    const r = resolverPn(d.pn);
+    let pn = d.pn, descricao = '';
+    if (r.produto) { pn = r.produto.pn; descricao = r.produto.descricao; }
+
+    document.getElementById('f_part_number').value = pn;
+    document.getElementById('f_descricao').value = descricao;
+    document.getElementById('f_quantidade').value = d.quantidade;
+    document.getElementById('f_lote_mando').value = d.lote;
+    if (!document.getElementById('f_data_entrada').value) marcarHoje();
+
+    let msg = `<div class="ok"><b>MANDO lido</b><br>
+      PN etiqueta: ${esc(d.pn)} · Lote: ${esc(d.lote)} · Qtd: ${esc(d.quantidade)}`;
+    if (r.produto) {
+      msg += `<br>Catálogo: ${esc(r.produto.pn)} — ${esc(r.produto.descricao)}`;
+      if (r.motivo === 'multiplo') {
+        msg += `<br><span style="color:#b45309">${r.candidatos.length} PNs parecidos — confira o PN.</span>`;
+      }
+    } else {
+      msg += `<br><span style="color:#b45309">PN não encontrado no Cadastro.</span>`;
+    }
+    msg += `</div>`;
+    setBipMsg(msg);
+    document.getElementById('f_lote_fornecedor').focus();
+    return;
+  }
+
+  if (tipo === 'fornecedor') {
+    const d = parseFornecedor(raw);
+    if (!d) {
+      setBipMsg(`Etiqueta de fornecedor fora do padrão.<br><span class="tag">${esc(raw)}</span>`, 'err');
+      return;
+    }
+    document.getElementById('f_lote_fornecedor').value = d.lote;
+    if (!document.getElementById('f_data_entrada').value) marcarHoje();
+
+    setBipMsg(`<div class="ok"><b>FORNECEDOR lido</b><br>
+      Lote: ${esc(d.lote)} · Fornecedor: ${esc(d.fornecedor)}</div>`);
+    return;
+  }
+
+  setBipMsg(`Código não reconhecido.<br><span class="tag">${esc(raw)}</span>
+    <br>Use os botões Mando / Forn. para forçar o tipo.`, 'err');
 }
 
 // ===================== BUSCA NO CATÁLOGO =====================
@@ -352,6 +531,16 @@ function acharCandidatos(termo) {
   };
 }
 
+function detalheExtra(p) {
+  const partes = [];
+  if (p.multiploCaixa) partes.push('cx: ' + p.multiploCaixa);
+  if (p.multiploPallet) partes.push('plt: ' + p.multiploPallet);
+  if (p.codigoFornecedor) partes.push('cod: ' + p.codigoFornecedor);
+  return partes.length
+    ? `<span class="tag">${esc(partes.join(' · '))}</span>`
+    : '';
+}
+
 function buscarPreview() {
   const termo = document.getElementById('busca').value.trim();
   const msg = document.getElementById('busca-msg');
@@ -366,7 +555,8 @@ function buscarPreview() {
   if (exato) {
     box.innerHTML = `<div class="cand" onclick="escolherPorPn('${esc(exato.pn)}')">
       <b>${esc(exato.pn)}</b><br>
-      <span style="color:#5a6b7a">${esc(exato.descricao)}</span></div>`;
+      <span style="color:#5a6b7a">${esc(exato.descricao)}</span>
+      ${detalheExtra(exato)}</div>`;
     return;
   }
 
@@ -379,6 +569,7 @@ function buscarPreview() {
     `<div class="cand" onclick="escolherPorPn('${esc(p.pn)}')">
       <b>${esc(p.pn)}</b><br>
       <span style="color:#5a6b7a">${esc(p.descricao)}</span>
+      ${detalheExtra(p)}
     </div>`).join('');
 }
 
@@ -424,6 +615,7 @@ function buscar() {
       `<div class="cand" onclick="escolherPorPn('${esc(p.pn)}')">
         <b>${esc(p.pn)}</b><br>
         <span style="color:#5a6b7a">${esc(p.descricao)}</span>
+        ${detalheExtra(p)}
       </div>`).join('');
 }
 
@@ -442,7 +634,7 @@ function preencher(p) {
   document.getElementById('f_descricao').value = p.descricao || '';
 }
 
-// ===================== CATÁLOGO (somente leitura) =====================
+// ===================== CATÁLOGO =====================
 function renderCatalogo() {
   const box = document.getElementById('cat_lista');
   const cnt = document.getElementById('cat_count');
@@ -471,6 +663,7 @@ function renderCatalogo() {
       <b style="color:#002c5f">${esc(p.pn)}</b><br>
       <span style="font-size:13px;color:#5a6b7a">${esc(p.descricao)}</span>
       ${p.fornecedor ? `<br><span style="font-size:11px;color:#8a97a5">forn: ${esc(p.fornecedor)}</span>` : ''}
+      ${detalheExtra(p)}
     </div>`).join('') +
     (lista.length > 200
       ? `<div class="hint" style="padding:10px 0">Mostrando 200 de ${lista.length}. Refine a busca.</div>`
@@ -548,6 +741,7 @@ function limparForm() {
     document.getElementById(id).value = '';
   });
   document.getElementById('f_data_entrada').value = hoje();
+  setBipMsg('');
   document.getElementById('busca').focus();
 }
 
@@ -639,9 +833,9 @@ function exportar() {
 }
 
 // ===================== SCANNER =====================
-let streamScan = null, scanLoop = null;
+let streamScan = null, scanLoop = null, scanCb = null;
 
-async function toggleScan() {
+async function abrirCamera(cb) {
   const box = document.getElementById('scan-box');
   const video = document.getElementById('scan-video');
 
@@ -649,6 +843,8 @@ async function toggleScan() {
     fecharScan();
     return;
   }
+
+  scanCb = cb || null;
 
   try {
     streamScan = await navigator.mediaDevices.getUserMedia({
@@ -660,18 +856,20 @@ async function toggleScan() {
 
     if ('BarcodeDetector' in window) {
       const det = new BarcodeDetector({
-        formats: ['code_128', 'code_39', 'ean_13', 'qr_code', 'data_matrix']
+        formats: ['code_128', 'code_39', 'ean_13', 'qr_code',
+                  'data_matrix', 'pdf417', 'itf']
       });
       scanLoop = setInterval(async () => {
         try {
           const codes = await det.detect(video);
           if (codes.length) {
-            document.getElementById('busca').value = codes[0].rawValue;
+            const raw = codes[0].rawValue;
+            const cbAtual = scanCb;
             fecharScan();
-            buscar();
+            if (cbAtual) cbAtual(raw);
           }
         } catch (e) {}
-      }, 300);
+      }, 250);
     } else {
       alert('Leitor automático indisponível neste navegador.\n' +
             'Digite o código manualmente.');
@@ -688,6 +886,13 @@ function fecharScan() {
     streamScan = null;
   }
   document.getElementById('scan-box').style.display = 'none';
+}
+
+function toggleScan() {
+  abrirCamera(raw => {
+    document.getElementById('busca').value = raw;
+    buscar();
+  });
 }
 
 // ===================== ABAS =====================
@@ -718,3 +923,5 @@ document.addEventListener('DOMContentLoaded', () => {
 </script>
 </body>
 </html>
+
+
