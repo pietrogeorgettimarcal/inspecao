@@ -1,10 +1,11 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="theme-color" content="#002c5f">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
 <title>Inspeção de Recebimento</title>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
@@ -84,18 +85,27 @@ input:focus,select:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(0,17
 .btn-sec{background:var(--teal);color:#fff}
 .btn-ter{background:#fff;color:var(--azul);border:1px solid var(--linha)}
 .btn-x{background:#fff;color:var(--erro);border:1px solid #f3c7c7}
-.btn-cam{background:var(--azul);color:#fff}
-.btn-cam.on{background:var(--erro)}
 
-#reader{
-  width:100%;height:0;border-radius:10px;overflow:hidden;background:#000;
-  transition:height .2s ease;
+/* ===== câmera — mesmo esquema do pesagem.html ===== */
+#qr-reader{
+  display:none;
+  width:100%;
+  border-radius:12px;
+  overflow:hidden;
+  background:#000;
+  margin-top:10px;
 }
-#reader.on{height:min(66vw,340px)}
-#reader video{width:100%!important;height:100%!important;object-fit:cover!important;display:block}
-#reader__dashboard,#reader__header_message,#reader__status_span,
-#reader__dashboard_section_csr,#reader__dashboard_section_fsr{display:none!important}
-#reader img{display:none!important}
+#qr-reader.on{display:block}
+#qr-reader video{
+  width:100% !important;
+  border-radius:12px;
+}
+#qr-reader img{display:none !important}
+#qr-reader__dashboard_section_csr{padding:0 !important;border:0 !important}
+#qr-reader__dashboard_section_fsr{display:none !important}
+#qr-reader__camera_permission_button,
+#qr-reader__file_scan_button{display:none !important}
+#qr-reader__header_message,#qr-reader__status_span{display:none !important}
 
 .msg{
   margin-top:10px;font-size:12.5px;line-height:1.55;white-space:pre-wrap;
@@ -182,11 +192,13 @@ td.mono{font-size:11.5px;font-weight:700}
           <option value="fornecedor">Fornecedor</option>
         </select>
       </div>
-      <button class="btn btn-cam" id="btnCamera" type="button"
-              style="width:auto;padding:13px 18px;font-size:12px">Câmera</button>
+      <button class="btn" id="btnCamera" type="button"
+              style="width:auto;padding:13px 18px;font-size:12px;background:var(--azul);color:#fff">
+        Câmera
+      </button>
     </div>
 
-    <div id="reader"></div>
+    <div id="qr-reader"></div>
 
     <button class="btn btn-ter" id="btnDigitar" type="button"
             style="margin-top:10px;font-size:12px">Digitar código</button>
@@ -675,14 +687,18 @@ function pintarCandidatos(cands) {
   cands.forEach(function (p) {
     const div = document.createElement("div");
     div.className = "cand";
+
     const a = document.createElement("div");
     a.className = "pn";
     a.textContent = p.pn;
+
     const b = document.createElement("div");
     b.className = "ds";
     b.textContent = p.descricao || "(sem descrição)";
+
     div.appendChild(a);
     div.appendChild(b);
+
     div.addEventListener("click", function () {
       $("fPn").value = p.pn;
       $("fDesc").value = p.descricao || "";
@@ -690,6 +706,7 @@ function pintarCandidatos(cands) {
       $("fBusca").value = "";
       $("fQtd").focus();
     });
+
     box.appendChild(div);
   });
 }
@@ -727,9 +744,13 @@ function pintarLeituras() {
   leituras.forEach(function (le) {
     const tr = document.createElement("tr");
     const cels = [
-      le.part_number || "", le.descricao || "", le.quantidade || "",
-      le.lote_mando || "", le.lote_fornecedor || "",
-      le.data_entrada || "", le.responsavel || ""
+      le.part_number || "",
+      le.descricao || "",
+      le.quantidade || "",
+      le.lote_mando || "",
+      le.lote_fornecedor || "",
+      le.data_entrada || "",
+      le.responsavel || ""
     ];
 
     cels.forEach(function (v, i) {
@@ -856,160 +877,98 @@ function exportarCsv() {
 }
 
 /* =======================================================================
-   CÂMERA — leitura de QR e código de barras
+   CÂMERA — padrão do pesagem.html (funciona em iPhone e Android)
    ======================================================================= */
-let cam = null;
-let camAtiva = false;
-let ultimoCodigo = "";
-let ultimoTs = 0;
+let html5Qr = null;
+let cameraRodando = false;
 
-function libPronta() { return typeof Html5Qrcode !== "undefined"; }
-
-/* Carrega a lib por CDN reserva, se o <script> do head falhou */
-function garantirLib() {
-  if (libPronta()) return Promise.resolve(true);
-
-  const urls = [
-    "https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js",
-    "https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js",
-    "https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"
-  ];
-
-  return urls.reduce(function (p, u) {
-    return p.then(function (ok) {
-      if (ok) return true;
-      return new Promise(function (res) {
-        const s = document.createElement("script");
-        s.src = u;
-        s.async = true;
-        s.onload = function () { res(libPronta()); };
-        s.onerror = function () { res(false); };
-        document.head.appendChild(s);
-      });
-    });
-  }, Promise.resolve(false));
-}
-
-function formatosSuportados() {
-  const out = [];
-  try {
-    const F = window.Html5QrcodeSupportedFormats;
-    if (!F) return undefined;
-    [F.CODE_128, F.QR_CODE, F.DATA_MATRIX, F.CODE_39, F.CODE_93, F.ITF]
-      .forEach(function (v) {
-        if (v !== undefined && v !== null) out.push(v);
-      });
-  } catch (e) {}
-  return out.length ? out : undefined;
-}
-
-function onScan(texto) {
-  const agora = Date.now();
-  if (texto === ultimoCodigo && agora - ultimoTs < 2500) return;
-  ultimoCodigo = texto;
-  ultimoTs = agora;
-
-  processarEtiqueta(texto);
-  fecharCamera();
-}
-
-function onErroFrame() { /* "não encontrado" entre frames é normal */ }
-
-async function abrirCamera() {
-  const box = $("reader");
+function pararCamera() {
+  const box = $("qr-reader");
   const btn = $("btnCamera");
 
-  if (camAtiva) { await fecharCamera(); return; }
+  if (html5Qr) {
+    const inst = html5Qr;
+    html5Qr = null;
+    try {
+      if (cameraRodando) {
+        inst.stop().then(function () {
+          try { inst.clear(); } catch (e) {}
+        }).catch(function () {});
+      } else {
+        try { inst.clear(); } catch (e) {}
+      }
+    } catch (e) {}
+  }
 
-  /* iOS perde o gesto se houver await antes do getUserMedia:
-     por isso a lib é verificada de forma síncrona aqui. */
-  if (!libPronta()) {
-    btn.disabled = true;
-    msg("Carregando o leitor...", "aviso");
-    const ok = await garantirLib();
-    btn.disabled = false;
-    if (!ok) {
-      msg("Não foi possível carregar o leitor.\n" +
-          "Verifique a internet ou use \"Digitar código\".", "erro");
-      return;
-    }
-    msg("Leitor carregado. Toque em Câmera novamente.", "aviso");
+  cameraRodando = false;
+  if (box) box.className = "";
+  if (btn) btn.textContent = "Câmera";
+}
+
+function abrirCamera() {
+  const box = $("qr-reader");
+  const btn = $("btnCamera");
+
+  // já aberta -> fecha
+  if (cameraRodando) {
+    pararCamera();
     return;
   }
 
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    msg("Este navegador não libera a câmera.\n" +
-        "A página precisa estar em HTTPS e com permissão concedida.", "erro");
+  if (typeof Html5Qrcode === "undefined") {
+    msg("Biblioteca de leitura não carregou.\nVerifique a internet e recarregue a página.", "erro");
     return;
   }
 
-  box.classList.add("on");
-  btn.classList.add("on");
+  // limpa resíduo de uma sessão anterior
+  box.innerHTML = "";
+  box.className = "on";
   btn.textContent = "Parar";
   msg("Abrindo a câmera...", "aviso");
 
-  const formatos = formatosSuportados();
+  const formatos = [];
+  try {
+    const F = Html5QrcodeSupportedFormats;
+    formatos.push(F.QR_CODE);
+    formatos.push(F.DATA_MATRIX);
+    formatos.push(F.CODE_128);
+    formatos.push(F.CODE_39);
+    formatos.push(F.CODE_93);
+    formatos.push(F.ITF);
+  } catch (e) {}
 
-  const configBase = {
+  const config = {
     fps: 10,
-    qrbox: function (w, h) {
-      const lado = Math.floor(Math.min(w, h) * 0.7);
-      return {
-        width: Math.max(180, lado),
-        height: Math.max(140, Math.floor(lado * 0.72))
-      };
-    },
-    disableFlip: false,
-    experimentalFeatures: { useBarCodeDetectorIfSupported: false }
+    qrbox: { width: 240, height: 240 },
+    showTorchButtonIfSupported: true
   };
+  if (formatos.length) config.formatsToSupport = formatos;
 
-  if (formatos) configBase.formatsToSupport = formatos;
+  html5Qr = new Html5Qrcode("qr-reader");
 
-  const tentativas = [
+  // start() chamado direto no clique, sem await antes (preserva o gesto no iOS)
+  html5Qr.start(
     { facingMode: "environment" },
-    { facingMode: { ideal: "environment" } },
-    { facingMode: "user" }
-  ];
-
-  for (let i = 0; i < tentativas.length; i++) {
-    try {
-      cam = new Html5Qrcode("reader", { verbose: false });
-      await cam.start(tentativas[i], configBase, onScan, onErroFrame);
-      camAtiva = true;
-      msg("Aponte para o QR Code ou código de barras da etiqueta.", "ok");
-      return;
-    } catch (e) {
-      try { if (cam) { await cam.stop(); cam.clear(); } } catch (_) {}
-      cam = null;
-    }
-  }
-
-  box.classList.remove("on");
-  btn.classList.remove("on");
-  btn.textContent = "Câmera";
-  camAtiva = false;
-  msg("Não foi possível abrir a câmera.\n\n" +
-      "1) Confirme a permissão de câmera nas configurações do navegador\n" +
-      "2) A página precisa estar em HTTPS\n" +
-      "3) Use \"Digitar código\" como alternativa", "erro");
-}
-
-async function fecharCamera() {
-  const box = $("reader");
-  const btn = $("btnCamera");
-  const c = cam;
-
-  cam = null;
-  camAtiva = false;
-
-  if (c) {
-    try { await c.stop(); } catch (e) {}
-    try { c.clear(); } catch (e) {}
-  }
-
-  box.classList.remove("on");
-  btn.classList.remove("on");
-  btn.textContent = "Câmera";
+    config,
+    function (texto) {
+      pararCamera();
+      msg("Código lido!", "ok");
+      processarEtiqueta(texto);
+    },
+    function () { /* "não encontrado" entre frames é normal */ }
+  ).then(function () {
+    cameraRodando = true;
+    msg("Aponte para o QR Code ou código de barras da etiqueta.", "ok");
+  }).catch(function (e) {
+    cameraRodando = false;
+    box.className = "";
+    btn.textContent = "Câmera";
+    msg("Não foi possível abrir a câmera.\n" + (e && e.message ? e.message : e) +
+        "\n\nVerifique a permissão de câmera do navegador. " +
+        "A página precisa estar em HTTPS.", "erro");
+    try { if (html5Qr) html5Qr.clear(); } catch (_) {}
+    html5Qr = null;
+  });
 }
 
 /* =======================================================================
@@ -1040,6 +999,7 @@ function ligarEventos() {
   $("fBusca").addEventListener("input", function () {
     const t = $("fBusca").value.trim();
     if (t.length < 2) { $("cands").innerHTML = ""; return; }
+
     const r = buscarProduto(t);
     if (r.exato) {
       $("cands").innerHTML = "";
@@ -1100,7 +1060,7 @@ function ligarEventos() {
   $("btnLimpar").addEventListener("click", limparLista);
 
   document.addEventListener("visibilitychange", function () {
-    if (document.hidden && camAtiva) fecharCamera();
+    if (document.hidden && cameraRodando) pararCamera();
   });
 }
 
@@ -1111,18 +1071,10 @@ document.addEventListener("DOMContentLoaded", function () {
   ligarEventos();
   $("fData").value = hoje();
   conectar();
-
-  /* Pré-carrega a lib de leitura para não atrasar o primeiro toque */
-  garantirLib().then(function (ok) {
-    if (!ok) {
-      msg("Leitor de câmera indisponível (sem conexão com o CDN).\n" +
-          "A digitação e o leitor USB continuam funcionando.", "aviso");
-    }
-  });
-
   $("bipe").focus();
 });
 </script>
 </body>
 </html>
+
 
