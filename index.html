@@ -9,7 +9,7 @@
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 
 <style>
 :root{
@@ -19,7 +19,7 @@
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 body{
-  margin:0;padding:0 0 92px;
+  margin:0;padding:0 0 96px;
   font-family:'Segoe UI',system-ui,-apple-system,Roboto,Arial,sans-serif;
   background:var(--bg);color:var(--texto);font-size:16px;
 }
@@ -27,6 +27,7 @@ header{
   position:sticky;top:0;z-index:30;background:var(--azul);color:#fff;
   padding:10px 14px;display:flex;align-items:center;gap:10px;
   box-shadow:0 2px 8px rgba(0,0,0,.18);
+  padding-top:calc(10px + env(safe-area-inset-top));
 }
 header .tit{font-size:15px;font-weight:700}
 header .sub{font-size:11px;color:#a9c4de}
@@ -69,7 +70,7 @@ input:focus,select:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(0,17
 .linha>.campo{flex:1}
 .mini{
   border:0;border-radius:9px;padding:12px 10px;font-size:11px;font-weight:800;
-  letter-spacing:.4px;cursor:pointer;white-space:nowrap;
+  letter-spacing:.4px;cursor:pointer;white-space:nowrap;font-family:inherit;
 }
 .mini.na{background:var(--aviso);color:#fff}
 .mini.azul{background:var(--azul);color:#fff}
@@ -83,11 +84,18 @@ input:focus,select:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(0,17
 .btn-sec{background:var(--teal);color:#fff}
 .btn-ter{background:#fff;color:var(--azul);border:1px solid var(--linha)}
 .btn-x{background:#fff;color:var(--erro);border:1px solid #f3c7c7}
+.btn-cam{background:var(--azul);color:#fff}
+.btn-cam.on{background:var(--erro)}
 
-#reader{width:100%;border-radius:10px;overflow:hidden;background:#000;display:none;margin-top:10px}
-#reader.on{display:block}
-#reader video{width:100%!important;display:block}
-#reader__dashboard,#reader__header_message,#reader__status_span{display:none!important}
+#reader{
+  width:100%;height:0;border-radius:10px;overflow:hidden;background:#000;
+  transition:height .2s ease;
+}
+#reader.on{height:min(66vw,340px)}
+#reader video{width:100%!important;height:100%!important;object-fit:cover!important;display:block}
+#reader__dashboard,#reader__header_message,#reader__status_span,
+#reader__dashboard_section_csr,#reader__dashboard_section_fsr{display:none!important}
+#reader img{display:none!important}
 
 .msg{
   margin-top:10px;font-size:12.5px;line-height:1.55;white-space:pre-wrap;
@@ -132,9 +140,6 @@ td.mono{font-size:11.5px;font-weight:700}
   padding:2px 7px;border-radius:20px;background:#e2e8f0;color:#334155;
   margin-left:6px;vertical-align:middle;
 }
-.tag.cation{background:#dbeafe;color:#1e40af}
-.tag.mando{background:#dcfce7;color:#166534}
-.tag.forn{background:#fef3c7;color:#92400e}
 </style>
 </head>
 
@@ -177,13 +182,15 @@ td.mono{font-size:11.5px;font-weight:700}
           <option value="fornecedor">Fornecedor</option>
         </select>
       </div>
-      <button class="btn" id="btnCamera" type="button"
-              style="width:auto;padding:13px 18px;font-size:12px;background:var(--azul);color:#fff">
-        Câmera
-      </button>
+      <button class="btn btn-cam" id="btnCamera" type="button"
+              style="width:auto;padding:13px 18px;font-size:12px">Câmera</button>
     </div>
 
     <div id="reader"></div>
+
+    <button class="btn btn-ter" id="btnDigitar" type="button"
+            style="margin-top:10px;font-size:12px">Digitar código</button>
+
     <div class="msg" id="msg"></div>
   </section>
 
@@ -275,7 +282,7 @@ td.mono{font-size:11.5px;font-weight:700}
 
 <script>
 /* =======================================================================
-   FIREBASE — mesma base usada pelo cadastro.py / firebase_sync.py
+   FIREBASE — mesma base do cadastro.py / firebase_sync.py
    ======================================================================= */
 const FB_CONFIG = {
   apiKey: "AIzaSyBQ7_k7huhS8oAyKp0OsbEajXFmrNxcrlo",
@@ -310,12 +317,6 @@ function hoje() {
          String(d.getDate()).padStart(2, "0");
 }
 
-function esc(t) {
-  return String(t == null ? "" : t)
-    .replace(/&/g, "&amp;").replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
-
 function msg(txt, tipo) {
   const el = $("msg");
   el.className = "msg on " + (tipo || "");
@@ -330,7 +331,7 @@ function pintarSync(ok) {
 }
 
 /* =======================================================================
-   FIREBASE — LEITURA E ESCRITA
+   FIREBASE
    ======================================================================= */
 function listaDe(cru) {
   const out = [];
@@ -371,13 +372,7 @@ function conectar() {
         .filter(Boolean)
         .sort(function (a, b) { return a.pn.localeCompare(b.pn); });
       pintarSync(true);
-      if (!leituras.length) {
-        msg("Catálogo carregado — " + produtos.length + " PNs vindos do Cadastro.", "ok");
-      }
-    }, function (e) {
-      pintarSync(false);
-      msg("Falha ao ler o catálogo: " + e.message, "erro");
-    });
+    }, function () { pintarSync(false); });
 
     db.ref(REF_RESPONS).on("value", function (snap) {
       responsaveis = listaDe(snap.val())
@@ -407,8 +402,6 @@ function conectar() {
 function detectarTipo(bruto) {
   const cru = String(bruto == null ? "" : bruto).trim();
   if (!cru) return "desconhecido";
-
-  /* CATiON: 0000000280_000000BC410B4200.A2 */
   if (/^[0-9]+\s*_/.test(cru)) return "cation";
 
   const t = soAlnum(cru);
@@ -422,7 +415,6 @@ function detectarTipo(bruto) {
   return "desconhecido";
 }
 
-/* Mando: P + zeros + PN + zeros + LOTE + zeros + QTD */
 function parseMando(bruto) {
   const t = soAlnum(bruto);
   if (!t) return null;
@@ -433,7 +425,6 @@ function parseMando(bruto) {
   if (!m) m = corpo.match(/([A-Z][A-Z0-9]{1,9})0*(\d{1,6})$/);
   if (!m) return null;
 
-  const lote = m[1];
   const qtd = parseInt(m[2], 10);
   if (!qtd || qtd <= 0) return null;
 
@@ -441,17 +432,15 @@ function parseMando(bruto) {
   resto = resto.replace(/0{4,}$/, "").replace(/^0+/, "");
   if (!resto) return null;
 
-  return { tipo: "mando", pn: resto, lote: lote, quantidade: String(qtd), bruto: t };
+  return { tipo: "mando", pn: resto, lote: m[1], quantidade: String(qtd), bruto: t };
 }
 
-/* CATiON: [zeros]QTD _ [zeros]PN   (sem lote) */
 function parseCation(bruto) {
   const t = String(bruto == null ? "" : bruto).trim().toUpperCase();
   const i = t.indexOf("_");
   if (i < 0) return null;
 
-  const esq = t.slice(0, i).replace(/[^0-9]/g, "");
-  const qtd = parseInt(esq, 10);
+  const qtd = parseInt(t.slice(0, i).replace(/[^0-9]/g, ""), 10);
   if (!qtd || qtd <= 0) return null;
 
   let dir = t.slice(i + 1).replace(/_/g, "").replace(/[^A-Z0-9.\-\/]/g, "");
@@ -461,8 +450,11 @@ function parseCation(bruto) {
   return { tipo: "cation", pn: dir, lote: null, quantidade: String(qtd), bruto: t };
 }
 
-/* Fornecedor: lote */
-const FORMATOS_FORNECEDOR = { DASOL: [/PRID[^A-Z0-9]*([A-Z0-9]{3,20})/] };
+const FORMATOS_FORNECEDOR = {
+  DASOL: [/PRID[^A-Z0-9]*([A-Z0-9]{3,20})/],
+  CATION: [/PRID[^A-Z0-9]*([A-Z0-9]{3,20})/]
+};
+
 const PADROES_GENERICOS = [
   /PRID[^A-Z0-9]*([A-Z0-9]{3,20})/,
   /LOTE[^A-Z0-9]*([A-Z0-9]{3,20})/,
@@ -538,43 +530,37 @@ function resolverPn(pnBruto) {
    PROCESSAMENTO DA ETIQUETA
    ======================================================================= */
 function processarEtiqueta(texto) {
+  const bruto = String(texto == null ? "" : texto).replace(/[\x00-\x1F\x7F]/g, "").trim();
+  if (!bruto) return;
+
   const modo = $("modo").value;
-  const tipo = (!modo || modo === "auto") ? detectarTipo(texto) : modo;
+  const tipo = (!modo || modo === "auto") ? detectarTipo(bruto) : modo;
 
   if (tipo === "cation") {
-    const d = parseCation(texto);
-    if (!d) {
-      msg("Código CATiON fora do padrão.\n" + texto.slice(0, 70) +
-          "\nEsperado: 0000000280_000000BC410B4200.A2", "erro");
-      return;
-    }
+    const d = parseCation(bruto);
+    if (!d) { msg("Código CATiON fora do padrão.\n" + bruto.slice(0, 70) +
+                  "\nEsperado: 0000000280_000000BC410B4200.A2", "erro"); return; }
     aplicarCation(d);
     return;
   }
 
   if (tipo === "mando") {
-    const d = parseMando(texto);
-    if (!d) {
-      msg("Etiqueta Mando fora do padrão.\n" + texto.slice(0, 70) +
-          "\nEsperado: P000…PN…LOTE…QTD", "erro");
-      return;
-    }
+    const d = parseMando(bruto);
+    if (!d) { msg("Etiqueta Mando fora do padrão.\n" + bruto.slice(0, 70) +
+                  "\nEsperado: P000…PN…LOTE…QTD", "erro"); return; }
     aplicarMando(d);
     return;
   }
 
   if (tipo === "fornecedor") {
-    const d = parseFornecedor(texto);
-    if (!d) {
-      msg("Etiqueta de fornecedor fora do padrão.\n" + texto.slice(0, 70) +
-          "\nEsperado: prid889595", "erro");
-      return;
-    }
+    const d = parseFornecedor(bruto);
+    if (!d) { msg("Etiqueta de fornecedor fora do padrão.\n" + bruto.slice(0, 70) +
+                  "\nEsperado: prid889595", "erro"); return; }
     aplicarFornecedor(d);
     return;
   }
 
-  msg("Código não reconhecido.\n" + texto.slice(0, 70) +
+  msg("Código não reconhecido.\n" + bruto.slice(0, 70) +
       "\nEscolha o tipo no seletor e bipe de novo.", "erro");
 }
 
@@ -588,10 +574,9 @@ function aplicarMando(d) {
   $("fLoteM").value = d.lote || "";
   if (!$("fData").value) $("fData").value = hoje();
 
-  let txt = "MANDO lido\n" +
-            "PN etiqueta: " + d.pn + "\n" +
-            "Lote: " + (d.lote || "-") + "\n" +
-            "Quantidade: " + d.quantidade;
+  let txt = "MANDO lido\nPN etiqueta: " + d.pn +
+            "\nLote: " + (d.lote || "-") +
+            "\nQuantidade: " + d.quantidade;
 
   if (p) {
     txt += "\nCatálogo: " + p.pn + " — " + (p.descricao || "-");
@@ -602,8 +587,7 @@ function aplicarMando(d) {
     }
     msg(txt, "ok");
   } else {
-    txt += "\nCatálogo: PN não encontrado — cadastre no módulo Cadastros.";
-    msg(txt, "aviso");
+    msg(txt + "\nCatálogo: PN não encontrado — cadastre no módulo Cadastros.", "aviso");
   }
 
   $("fLoteF").focus();
@@ -618,9 +602,8 @@ function aplicarCation(d) {
   $("fQtd").value = d.quantidade;
   if (!$("fData").value) $("fData").value = hoje();
 
-  let txt = "CATiON lido\n" +
-            "PN etiqueta: " + d.pn + "\n" +
-            "Quantidade: " + d.quantidade +
+  let txt = "CATiON lido\nPN etiqueta: " + d.pn +
+            "\nQuantidade: " + d.quantidade +
             "\nEste código não traz lote — bipe a etiqueta do fornecedor.";
 
   if (p) {
@@ -632,8 +615,7 @@ function aplicarCation(d) {
     }
     msg(txt, "ok");
   } else {
-    txt += "\nCatálogo: PN não encontrado — cadastre no módulo Cadastros.";
-    msg(txt, "aviso");
+    msg(txt + "\nCatálogo: PN não encontrado — cadastre no módulo Cadastros.", "aviso");
   }
 
   $("fLoteF").focus();
@@ -643,13 +625,8 @@ function aplicarFornecedor(d) {
   $("fLoteF").value = d.lote || "";
   if (!$("fData").value) $("fData").value = hoje();
 
-  let txt = "FORNECEDOR lido\n" +
-            "Lote: " + (d.lote || "-") + "\n" +
-            "Fornecedor: " + (d.fornecedor || "?");
-
-  if ((d.fornecedor || "?") === "?") {
-    txt += "\nDica: cadastre o padrão deste fornecedor em FORMATOS_FORNECEDOR.";
-  }
+  let txt = "FORNECEDOR lido\nLote: " + (d.lote || "-") +
+            "\nFornecedor: " + (d.fornecedor || "?");
 
   msg(txt, "ok");
 
@@ -693,12 +670,19 @@ function buscarProduto(termo, limite) {
 function pintarCandidatos(cands) {
   const box = $("cands");
   box.innerHTML = "";
+  if (!cands || !cands.length) return;
+
   cands.forEach(function (p) {
     const div = document.createElement("div");
     div.className = "cand";
-    div.innerHTML = '<div class="pn"></div><div class="ds"></div>';
-    div.querySelector(".pn").textContent = p.pn;
-    div.querySelector(".ds").textContent = p.descricao || "(sem descrição)";
+    const a = document.createElement("div");
+    a.className = "pn";
+    a.textContent = p.pn;
+    const b = document.createElement("div");
+    b.className = "ds";
+    b.textContent = p.descricao || "(sem descrição)";
+    div.appendChild(a);
+    div.appendChild(b);
     div.addEventListener("click", function () {
       $("fPn").value = p.pn;
       $("fDesc").value = p.descricao || "";
@@ -743,13 +727,9 @@ function pintarLeituras() {
   leituras.forEach(function (le) {
     const tr = document.createElement("tr");
     const cels = [
-      le.part_number || "",
-      le.descricao || "",
-      le.quantidade || "",
-      le.lote_mando || "",
-      le.lote_fornecedor || "",
-      le.data_entrada || "",
-      le.responsavel || ""
+      le.part_number || "", le.descricao || "", le.quantidade || "",
+      le.lote_mando || "", le.lote_fornecedor || "",
+      le.data_entrada || "", le.responsavel || ""
     ];
 
     cels.forEach(function (v, i) {
@@ -762,6 +742,7 @@ function pintarLeituras() {
 
     const tdX = document.createElement("td");
     const b = document.createElement("button");
+    b.type = "button";
     b.className = "mini na";
     b.textContent = "×";
     b.style.padding = "4px 9px";
@@ -796,10 +777,7 @@ function limparLista() {
    ADICIONAR
    ======================================================================= */
 function adicionar(limparDepois) {
-  if (!db) {
-    msg("Banco não conectado.", "erro");
-    return;
-  }
+  if (!db) { msg("Banco não conectado.", "erro"); return; }
 
   const pn = $("fPn").value.trim();
   const ds = $("fDesc").value.trim();
@@ -855,10 +833,7 @@ function limparCampos() {
    CSV
    ======================================================================= */
 function exportarCsv() {
-  if (!leituras.length) {
-    msg("Nenhuma linha para exportar.", "aviso");
-    return;
-  }
+  if (!leituras.length) { msg("Nenhuma linha para exportar.", "aviso"); return; }
 
   const cab = ["PART NUMBER", "DESCRIÇÃO", "QUANTIDADE", "LOTE MANDO",
                "LOTE FORNECEDOR", "DATA DE ENTRADA", "RESPONSÁVEL"];
@@ -881,61 +856,160 @@ function exportarCsv() {
 }
 
 /* =======================================================================
-   CÂMERA
+   CÂMERA — leitura de QR e código de barras
    ======================================================================= */
 let cam = null;
-let camOn = false;
+let camAtiva = false;
+let ultimoCodigo = "";
+let ultimoTs = 0;
 
-async function alternarCamera() {
-  const btn = $("btnCamera");
-  const box = $("reader");
+function libPronta() { return typeof Html5Qrcode !== "undefined"; }
 
-  if (camOn) {
-    try { await cam.stop(); await cam.clear(); } catch (e) {}
-    camOn = false;
-    cam = null;
-    box.className = "";
-    btn.textContent = "Câmera";
-    $("bipe").focus();
-    return;
-  }
+/* Carrega a lib por CDN reserva, se o <script> do head falhou */
+function garantirLib() {
+  if (libPronta()) return Promise.resolve(true);
 
-  if (typeof Html5Qrcode === "undefined") {
-    msg("Biblioteca de leitura não carregou.\nVerifique a internet e recarregue.", "erro");
-    return;
-  }
+  const urls = [
+    "https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js",
+    "https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js",
+    "https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"
+  ];
 
-  box.className = "on";
-  btn.textContent = "Parar";
+  return urls.reduce(function (p, u) {
+    return p.then(function (ok) {
+      if (ok) return true;
+      return new Promise(function (res) {
+        const s = document.createElement("script");
+        s.src = u;
+        s.async = true;
+        s.onload = function () { res(libPronta()); };
+        s.onerror = function () { res(false); };
+        document.head.appendChild(s);
+      });
+    });
+  }, Promise.resolve(false));
+}
 
-  const formatos = [];
+function formatosSuportados() {
+  const out = [];
   try {
-    formatos.push(Html5QrcodeSupportedFormats.CODE_128);
-    formatos.push(Html5QrcodeSupportedFormats.QR_CODE);
-    formatos.push(Html5QrcodeSupportedFormats.DATA_MATRIX);
-    formatos.push(Html5QrcodeSupportedFormats.CODE_39);
-    formatos.push(Html5QrcodeSupportedFormats.ITF);
+    const F = window.Html5QrcodeSupportedFormats;
+    if (!F) return undefined;
+    [F.CODE_128, F.QR_CODE, F.DATA_MATRIX, F.CODE_39, F.CODE_93, F.ITF]
+      .forEach(function (v) {
+        if (v !== undefined && v !== null) out.push(v);
+      });
   } catch (e) {}
+  return out.length ? out : undefined;
+}
 
-  cam = new Html5Qrcode("reader", {
-    formatsToSupport: formatos.length ? formatos : undefined,
-    verbose: false
-  });
+function onScan(texto) {
+  const agora = Date.now();
+  if (texto === ultimoCodigo && agora - ultimoTs < 2500) return;
+  ultimoCodigo = texto;
+  ultimoTs = agora;
 
-  try {
-    await cam.start(
-      { facingMode: "environment" },
-      { fps: 10, qrbox: { width: 280, height: 170 } },
-      function (texto) { processarEtiqueta(texto); },
-      function () {}
-    );
-    camOn = true;
-  } catch (e) {
-    box.className = "";
-    btn.textContent = "Câmera";
-    cam = null;
-    msg("Não foi possível abrir a câmera.\n" + e.message, "erro");
+  processarEtiqueta(texto);
+  fecharCamera();
+}
+
+function onErroFrame() { /* "não encontrado" entre frames é normal */ }
+
+async function abrirCamera() {
+  const box = $("reader");
+  const btn = $("btnCamera");
+
+  if (camAtiva) { await fecharCamera(); return; }
+
+  /* iOS perde o gesto se houver await antes do getUserMedia:
+     por isso a lib é verificada de forma síncrona aqui. */
+  if (!libPronta()) {
+    btn.disabled = true;
+    msg("Carregando o leitor...", "aviso");
+    const ok = await garantirLib();
+    btn.disabled = false;
+    if (!ok) {
+      msg("Não foi possível carregar o leitor.\n" +
+          "Verifique a internet ou use \"Digitar código\".", "erro");
+      return;
+    }
+    msg("Leitor carregado. Toque em Câmera novamente.", "aviso");
+    return;
   }
+
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    msg("Este navegador não libera a câmera.\n" +
+        "A página precisa estar em HTTPS e com permissão concedida.", "erro");
+    return;
+  }
+
+  box.classList.add("on");
+  btn.classList.add("on");
+  btn.textContent = "Parar";
+  msg("Abrindo a câmera...", "aviso");
+
+  const formatos = formatosSuportados();
+
+  const configBase = {
+    fps: 10,
+    qrbox: function (w, h) {
+      const lado = Math.floor(Math.min(w, h) * 0.7);
+      return {
+        width: Math.max(180, lado),
+        height: Math.max(140, Math.floor(lado * 0.72))
+      };
+    },
+    disableFlip: false,
+    experimentalFeatures: { useBarCodeDetectorIfSupported: false }
+  };
+
+  if (formatos) configBase.formatsToSupport = formatos;
+
+  const tentativas = [
+    { facingMode: "environment" },
+    { facingMode: { ideal: "environment" } },
+    { facingMode: "user" }
+  ];
+
+  for (let i = 0; i < tentativas.length; i++) {
+    try {
+      cam = new Html5Qrcode("reader", { verbose: false });
+      await cam.start(tentativas[i], configBase, onScan, onErroFrame);
+      camAtiva = true;
+      msg("Aponte para o QR Code ou código de barras da etiqueta.", "ok");
+      return;
+    } catch (e) {
+      try { if (cam) { await cam.stop(); cam.clear(); } } catch (_) {}
+      cam = null;
+    }
+  }
+
+  box.classList.remove("on");
+  btn.classList.remove("on");
+  btn.textContent = "Câmera";
+  camAtiva = false;
+  msg("Não foi possível abrir a câmera.\n\n" +
+      "1) Confirme a permissão de câmera nas configurações do navegador\n" +
+      "2) A página precisa estar em HTTPS\n" +
+      "3) Use \"Digitar código\" como alternativa", "erro");
+}
+
+async function fecharCamera() {
+  const box = $("reader");
+  const btn = $("btnCamera");
+  const c = cam;
+
+  cam = null;
+  camAtiva = false;
+
+  if (c) {
+    try { await c.stop(); } catch (e) {}
+    try { c.clear(); } catch (e) {}
+  }
+
+  box.classList.remove("on");
+  btn.classList.remove("on");
+  btn.textContent = "Câmera";
 }
 
 /* =======================================================================
@@ -956,12 +1030,16 @@ function ligarEventos() {
     if (t && t.trim()) processarEtiqueta(t.trim());
   });
 
-  $("btnCamera").addEventListener("click", alternarCamera);
+  $("btnDigitar").addEventListener("click", function () {
+    const t = prompt("Digite o código da etiqueta:");
+    if (t && t.trim()) processarEtiqueta(t.trim());
+  });
+
+  $("btnCamera").addEventListener("click", abrirCamera);
 
   $("fBusca").addEventListener("input", function () {
     const t = $("fBusca").value.trim();
     if (t.length < 2) { $("cands").innerHTML = ""; return; }
-
     const r = buscarProduto(t);
     if (r.exato) {
       $("cands").innerHTML = "";
@@ -976,15 +1054,10 @@ function ligarEventos() {
     if (e.key !== "Enter") return;
     e.preventDefault();
     const r = buscarProduto($("fBusca").value.trim());
-    if (r.exato) {
-      $("fPn").value = r.exato.pn;
-      $("fDesc").value = r.exato.descricao || "";
-    } else if (r.candidatos.length === 1) {
-      $("fPn").value = r.candidatos[0].pn;
-      $("fDesc").value = r.candidatos[0].descricao || "";
-    } else {
-      return;
-    }
+    const alvo = r.exato || (r.candidatos.length === 1 ? r.candidatos[0] : null);
+    if (!alvo) return;
+    $("fPn").value = alvo.pn;
+    $("fDesc").value = alvo.descricao || "";
     $("fBusca").value = "";
     $("cands").innerHTML = "";
     $("fQtd").focus();
@@ -1010,22 +1083,25 @@ function ligarEventos() {
     if (!db) { msg("Banco não conectado.", "erro"); return; }
     db.ref(REF_RESPONS + "/" + chave).set({ nome: n }).then(function () {
       $("fResp").value = n;
-      msg("Responsável \"" + n + "\" cadastrado.", "ok");
+      msg("Responsável cadastrado: " + n, "ok");
     }).catch(function (e) {
       msg("Falha ao cadastrar responsável: " + e.message, "erro");
     });
   });
 
   $("fResp").addEventListener("change", function () {
-    if ($("fResp").value.trim()) {
-      localStorage.setItem("inspecao_resp", $("fResp").value.trim());
-    }
+    const v = $("fResp").value.trim();
+    if (v) localStorage.setItem("inspecao_resp", v);
   });
 
   $("btnAdd").addEventListener("click", function () { adicionar(false); });
   $("btnAddLimpar").addEventListener("click", function () { adicionar(true); });
   $("btnCsv").addEventListener("click", exportarCsv);
   $("btnLimpar").addEventListener("click", limparLista);
+
+  document.addEventListener("visibilitychange", function () {
+    if (document.hidden && camAtiva) fecharCamera();
+  });
 }
 
 /* =======================================================================
@@ -1035,10 +1111,18 @@ document.addEventListener("DOMContentLoaded", function () {
   ligarEventos();
   $("fData").value = hoje();
   conectar();
+
+  /* Pré-carrega a lib de leitura para não atrasar o primeiro toque */
+  garantirLib().then(function (ok) {
+    if (!ok) {
+      msg("Leitor de câmera indisponível (sem conexão com o CDN).\n" +
+          "A digitação e o leitor USB continuam funcionando.", "aviso");
+    }
+  });
+
   $("bipe").focus();
 });
 </script>
 </body>
 </html>
-
 
