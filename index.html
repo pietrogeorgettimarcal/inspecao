@@ -51,8 +51,12 @@ main{padding:12px;max-width:720px;margin:0 auto}
   display:flex;align-items:center;gap:6px;
 }
 .card h2::after{content:"";flex:1;height:2px;background:var(--teal);border-radius:2px}
-.dica{font-size:11.5px;color:var(--muted);line-height:1.55;margin:0 0 8px}
+.dica{font-size:11.5px;color:var(--muted);line-height:1.6;margin:0 0 8px}
 .dica b{color:var(--azul)}
+.dica code{
+  font-family:Consolas,'SF Mono',Menlo,monospace;font-size:10.5px;
+  background:#f1f5f9;padding:1px 4px;border-radius:3px;color:#334155;
+}
 
 label{
   display:block;font-size:10.5px;font-weight:800;letter-spacing:.5px;
@@ -150,6 +154,9 @@ td.mono{font-size:11.5px;font-weight:700}
   padding:2px 7px;border-radius:20px;background:#e2e8f0;color:#334155;
   margin-left:6px;vertical-align:middle;
 }
+.tag.cation{background:#dbeafe;color:#1e40af}
+.tag.mando{background:#dcfce7;color:#166534}
+.tag.forn{background:#fef3c7;color:#92400e}
 </style>
 </head>
 
@@ -165,12 +172,13 @@ td.mono{font-size:11.5px;font-weight:700}
 
 <main>
 
+  <!-- ================= LEITURA ================= -->
   <section class="card">
     <h2>Bipe ou escaneie a etiqueta</h2>
     <p class="dica">
-      <b>Mando:</b> P000…PN…LOTE…QTD<br>
-      <b>CATiON:</b> 0000000280_000000BC410B4200.A2<br>
-      <b>Fornecedor:</b> prid889595
+      <b>Mando:</b> <code>P000…PN…LOTE…QTD</code><br>
+      <b>CATiON:</b> <code>0000000280_0000000BC410B4200.a2</code><br>
+      <b>Fornecedor:</b> <code>prid889595</code>
     </p>
 
     <div class="linha">
@@ -206,6 +214,7 @@ td.mono{font-size:11.5px;font-weight:700}
     <div class="msg" id="msg"></div>
   </section>
 
+  <!-- ================= DADOS ================= -->
   <section class="card">
     <h2>Dados da leitura</h2>
 
@@ -257,6 +266,7 @@ td.mono{font-size:11.5px;font-weight:700}
     <datalist id="listaResp"></datalist>
   </section>
 
+  <!-- ================= LISTA ================= -->
   <section class="card">
     <h2>Leituras <span class="tag" id="tagCount">0</span></h2>
     <div class="tab-wrap">
@@ -409,24 +419,34 @@ function conectar() {
 }
 
 /* =======================================================================
-   PARSERS DE ETIQUETA
+   PARSERS DE ETIQUETA — TRÊS FORMATOS
    ======================================================================= */
 function detectarTipo(bruto) {
   const cru = String(bruto == null ? "" : bruto).trim();
   if (!cru) return "desconhecido";
+
+  /* CATiON: 0000000280_0000000BC410B4200.a2 */
   if (/^[0-9]+\s*_/.test(cru)) return "cation";
 
   const t = soAlnum(cru);
   if (!t) return "desconhecido";
 
+  /* Fornecedor: prid889595 */
   if (t.indexOf("PRID") === 0) return "fornecedor";
+
+  /* Mando: P + zeros + PN + zeros + LOTE + zeros + QTD */
   if (/^P0{6,}/.test(t) && t.length >= 20) return "mando";
   if (t.length >= 24 && /\d{6}$/.test(t)) return "mando";
+
+  /* Número puro = lote do fornecedor */
   if (/^\d{4,12}$/.test(t)) return "fornecedor";
 
   return "desconhecido";
 }
 
+/* ---------- 1) MANDO ----------
+   P00000000000000BH9003Z10000000000VKRA000600
+   P + zeros + PN + zeros + LOTE + zeros + QTD             */
 function parseMando(bruto) {
   const t = soAlnum(bruto);
   if (!t) return null;
@@ -444,26 +464,47 @@ function parseMando(bruto) {
   resto = resto.replace(/0{4,}$/, "").replace(/^0+/, "");
   if (!resto) return null;
 
-  return { tipo: "mando", pn: resto, lote: m[1], quantidade: String(qtd), bruto: t };
+  return {
+    tipo: "mando",
+    pn: resto,
+    lote: m[1],
+    quantidade: String(qtd),
+    bruto: t
+  };
 }
 
+/* ---------- 2) CATiON ----------
+   0000000280_0000000BC410B4200.a2
+   [zeros]QUANTIDADE _ [zeros]PART NUMBER   (sem lote)     */
 function parseCation(bruto) {
   const t = String(bruto == null ? "" : bruto).trim().toUpperCase();
   const i = t.indexOf("_");
   if (i < 0) return null;
 
-  const qtd = parseInt(t.slice(0, i).replace(/[^0-9]/g, ""), 10);
+  const qtdTxt = t.slice(0, i).replace(/[^0-9]/g, "");
+  if (!qtdTxt) return null;
+
+  const qtd = parseInt(qtdTxt, 10);
   if (!qtd || qtd <= 0) return null;
 
-  let dir = t.slice(i + 1).replace(/_/g, "").replace(/[^A-Z0-9.\-\/]/g, "");
-  dir = dir.replace(/^0+/, "").trim();
-  if (!dir) return null;
+  /* mantém letras, números, ponto, hífen e barra; remove só os zeros à esquerda */
+  let pn = t.slice(i + 1).replace(/_/g, "").replace(/[^A-Z0-9.\-\/]/g, "");
+  pn = pn.replace(/^0+/, "").trim();
+  if (!pn) return null;
 
-  return { tipo: "cation", pn: dir, lote: null, quantidade: String(qtd), bruto: t };
+  return {
+    tipo: "cation",
+    pn: pn,
+    lote: null,
+    quantidade: String(qtd),
+    bruto: t
+  };
 }
 
+/* ---------- 3) FORNECEDOR ----------
+   prid889595 · 889595 · "DASOL 889595 2026-11-12"           */
 const FORMATOS_FORNECEDOR = {
-  DASOL: [/PRID[^A-Z0-9]*([A-Z0-9]{3,20})/],
+  DASOL:  [/PRID[^A-Z0-9]*([A-Z0-9]{3,20})/],
   CATION: [/PRID[^A-Z0-9]*([A-Z0-9]{3,20})/]
 };
 
@@ -505,7 +546,7 @@ function parseFornecedor(bruto) {
 }
 
 /* =======================================================================
-   RESOLVER PN NO CATÁLOGO
+   RESOLVER PN NO CATÁLOGO DO CADASTRO
    ======================================================================= */
 function resolverPn(pnBruto) {
   const alvo = soAlnum(pnBruto);
@@ -550,24 +591,33 @@ function processarEtiqueta(texto) {
 
   if (tipo === "cation") {
     const d = parseCation(bruto);
-    if (!d) { msg("Código CATiON fora do padrão.\n" + bruto.slice(0, 70) +
-                  "\nEsperado: 0000000280_000000BC410B4200.A2", "erro"); return; }
+    if (!d) {
+      msg("Código CATiON fora do padrão.\n" + bruto.slice(0, 70) +
+          "\nEsperado: 0000000280_0000000BC410B4200.a2", "erro");
+      return;
+    }
     aplicarCation(d);
     return;
   }
 
   if (tipo === "mando") {
     const d = parseMando(bruto);
-    if (!d) { msg("Etiqueta Mando fora do padrão.\n" + bruto.slice(0, 70) +
-                  "\nEsperado: P000…PN…LOTE…QTD", "erro"); return; }
+    if (!d) {
+      msg("Etiqueta Mando fora do padrão.\n" + bruto.slice(0, 70) +
+          "\nEsperado: P000…PN…LOTE…QTD", "erro");
+      return;
+    }
     aplicarMando(d);
     return;
   }
 
   if (tipo === "fornecedor") {
     const d = parseFornecedor(bruto);
-    if (!d) { msg("Etiqueta de fornecedor fora do padrão.\n" + bruto.slice(0, 70) +
-                  "\nEsperado: prid889595", "erro"); return; }
+    if (!d) {
+      msg("Etiqueta de fornecedor fora do padrão.\n" + bruto.slice(0, 70) +
+          "\nEsperado: prid889595", "erro");
+      return;
+    }
     aplicarFornecedor(d);
     return;
   }
@@ -877,7 +927,7 @@ function exportarCsv() {
 }
 
 /* =======================================================================
-   CÂMERA — padrão do pesagem.html (funciona em iPhone e Android)
+   CÂMERA — mesmo padrão do pesagem.html (iPhone e Android)
    ======================================================================= */
 let html5Qr = null;
 let cameraRodando = false;
@@ -909,18 +959,13 @@ function abrirCamera() {
   const box = $("qr-reader");
   const btn = $("btnCamera");
 
-  // já aberta -> fecha
-  if (cameraRodando) {
-    pararCamera();
-    return;
-  }
+  if (cameraRodando) { pararCamera(); return; }
 
   if (typeof Html5Qrcode === "undefined") {
     msg("Biblioteca de leitura não carregou.\nVerifique a internet e recarregue a página.", "erro");
     return;
   }
 
-  // limpa resíduo de uma sessão anterior
   box.innerHTML = "";
   box.className = "on";
   btn.textContent = "Parar";
@@ -946,7 +991,7 @@ function abrirCamera() {
 
   html5Qr = new Html5Qrcode("qr-reader");
 
-  // start() chamado direto no clique, sem await antes (preserva o gesto no iOS)
+  /* start() direto no clique, sem await antes: preserva o gesto no iOS */
   html5Qr.start(
     { facingMode: "environment" },
     config,
@@ -1076,5 +1121,6 @@ document.addEventListener("DOMContentLoaded", function () {
 </script>
 </body>
 </html>
+
 
 
