@@ -1,259 +1,282 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#002c5f">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="mobile-web-app-capable" content="yes">
 <title>Inspeção de Recebimento</title>
+
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
-<style>
-  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-  html,body{margin:0;height:100%;font-family:-apple-system,BlinkMacSystemFont,
-            "Segoe UI",Roboto,Arial,sans-serif;background:#ececec;color:#1e293b}
-  .bar{background:#002c5f;color:#fff;padding:12px 16px;
-       display:flex;align-items:center;gap:10px;position:sticky;top:0;
-       z-index:20;box-shadow:0 2px 8px rgba(0,0,0,.18)}
-  .bar h1{font-size:16px;margin:0;font-weight:700;flex:1}
-  .bar .sync{font-size:11px;color:#ffcf7a}
-  .bar .sync.on{color:#8affab}
-  .wrap{padding:14px;max-width:680px;margin:0 auto;padding-bottom:90px}
-  .card{background:#fff;border-radius:10px;padding:14px;margin-bottom:12px;
-        box-shadow:0 1px 4px rgba(0,0,0,.08)}
-  .lbl{font-size:11px;font-weight:700;color:#5a6b7a;text-transform:uppercase;
-       margin:10px 0 4px;display:block}
-  input,select,textarea{width:100%;padding:12px;border:1px solid #cbd5e1;
-       border-radius:8px;font-size:16px;font-family:inherit;background:#fff;
-       color:#1e293b}
-  input:focus,select:focus{outline:none;border-color:#00b2a9;
-       box-shadow:0 0 0 3px rgba(0,178,169,.15)}
-  .row{display:flex;gap:8px}
-  .row>*{flex:1}
-  .btn{padding:14px;border:none;border-radius:8px;font-size:15px;
-       font-weight:700;cursor:pointer;width:100%;font-family:inherit}
-  .btn:active{opacity:.85}
-  .btn-primary{background:#15803d;color:#fff}
-  .btn-teal{background:#00b2a9;color:#fff}
-  .btn-ghost{background:#e5e7eb;color:#374151}
-  .btn-danger{background:#b91c1c;color:#fff}
-  .btn-na{background:#b45309;color:#fff;padding:6px 12px;font-size:12px;
-          width:auto;border-radius:6px}
-  .btn-sm{padding:10px 12px;font-size:13px;width:auto}
-  .hint{font-size:12px;color:#5a6b7a;margin-top:4px}
-  .err{font-size:12px;color:#b91c1c;margin-top:6px}
-  .ok{font-size:12px;color:#15803d;margin-top:6px}
-  .warn{font-size:12px;color:#b45309;margin-top:6px}
-  .cand{background:#f8fafc;border:1px solid #d7dee6;border-radius:8px;
-        padding:12px;margin-bottom:6px;cursor:pointer;font-size:14px}
-  .cand:active{background:#e8f7e9;border-color:#00b2a9}
-  .cand b{color:#002c5f}
-  .tag{font-size:11px;color:#8a97a5;display:block;margin-top:2px}
-  .bipe{background:#fffbe6;border:2px solid #e0c37a;border-radius:10px;
-        padding:14px;margin-bottom:12px}
-  .tabline{display:none}
-  .tabline.active{display:block}
-  table{width:100%;border-collapse:collapse;font-size:12px}
-  th{background:#002c5f;color:#fff;padding:8px 6px;text-align:left;
-     font-size:10px;text-transform:uppercase;position:sticky;top:0}
-  td{padding:8px 6px;border-bottom:1px solid #e5e7eb;vertical-align:top}
-  tr.na td{color:#b45309;font-style:italic}
-  .fita{position:fixed;bottom:0;left:0;right:0;background:#fff;
-        border-top:1px solid #d1d5db;padding:10px 14px;
-        display:flex;gap:8px;z-index:15;box-shadow:0 -2px 8px rgba(0,0,0,.06)}
-  .fita .btn{flex:1}
-  .count{font-size:13px;font-weight:700;color:#002c5f;
-         display:flex;justify-content:space-between;padding:6px 2px}
-  .empty{text-align:center;color:#8a97a5;padding:32px 12px;font-size:14px}
 
-  /* ===== scanner ===== */
-  #scan-box{display:none;position:fixed;inset:0;background:#000;z-index:99;
-            flex-direction:column}
-  #scan-top{background:#000;color:#fff;padding:10px 14px;
-            display:flex;justify-content:space-between;align-items:center;
-            gap:10px}
-  #scan-titulo{font-size:14px;font-weight:700}
-  #scan-top button,#scan-bottom button{background:#fff;color:#000;
-            border:none;border-radius:6px;padding:9px 14px;
-            font-weight:700;font-size:13px}
-  #qr-reader{flex:1;width:100%;position:relative;overflow:hidden;
-             background:#000;min-height:200px}
-  #qr-reader video{width:100%!important;height:100%!important;
-                   object-fit:cover!important;display:block}
-  #qr-reader__dashboard,#qr-reader__header_message,
-  #qr-reader__status_span{display:none!important}
-  #scan-bottom{background:#000;padding:10px 14px;
-               display:flex;justify-content:space-between;
-               align-items:center;gap:10px}
-  #scan-msg{font-size:12px;color:#f39c12;flex:1;line-height:1.3}
+<style>
+:root{
+  --azul:#002c5f; --teal:#00b2a9; --bg:#eef2f6; --card:#fff;
+  --linha:#d7dee6; --texto:#1e293b; --muted:#64748b;
+  --ok:#15803d; --erro:#b91c1c; --aviso:#b45309;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{
+  margin:0;padding:0 0 92px;
+  font-family:'Segoe UI',system-ui,-apple-system,Roboto,Arial,sans-serif;
+  background:var(--bg);color:var(--texto);font-size:16px;
+}
+header{
+  position:sticky;top:0;z-index:30;background:var(--azul);color:#fff;
+  padding:10px 14px;display:flex;align-items:center;gap:10px;
+  box-shadow:0 2px 8px rgba(0,0,0,.18);
+}
+header .tit{font-size:15px;font-weight:700}
+header .sub{font-size:11px;color:#a9c4de}
+header .sync{
+  margin-left:auto;font-size:11px;font-weight:700;
+  padding:3px 9px;border-radius:20px;background:rgba(255,255,255,.12);
+  white-space:nowrap;
+}
+.sync.on{color:#8affab}
+.sync.off{color:#ffcf7a}
+
+main{padding:12px;max-width:720px;margin:0 auto}
+.card{
+  background:var(--card);border:1px solid var(--linha);border-radius:12px;
+  padding:14px;margin-bottom:12px;box-shadow:0 1px 3px rgba(15,23,42,.05);
+}
+.card h2{
+  margin:0 0 10px;font-size:11px;font-weight:800;letter-spacing:.8px;
+  text-transform:uppercase;color:var(--azul);
+  display:flex;align-items:center;gap:6px;
+}
+.card h2::after{content:"";flex:1;height:2px;background:var(--teal);border-radius:2px}
+.dica{font-size:11.5px;color:var(--muted);line-height:1.55;margin:0 0 8px}
+.dica b{color:var(--azul)}
+
+label{
+  display:block;font-size:10.5px;font-weight:800;letter-spacing:.5px;
+  text-transform:uppercase;color:var(--muted);margin:10px 0 4px;
+}
+label:first-of-type{margin-top:0}
+input,select{
+  width:100%;font-size:16px;font-family:inherit;color:var(--texto);
+  background:#fff;border:1px solid var(--linha);border-radius:9px;
+  padding:12px;outline:none;
+}
+input:focus,select:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(0,178,169,.15)}
+.mono{font-family:Consolas,'SF Mono',Menlo,monospace;font-weight:700;letter-spacing:.4px}
+
+.linha{display:flex;gap:8px;align-items:flex-end}
+.linha>.campo{flex:1}
+.mini{
+  border:0;border-radius:9px;padding:12px 10px;font-size:11px;font-weight:800;
+  letter-spacing:.4px;cursor:pointer;white-space:nowrap;
+}
+.mini.na{background:var(--aviso);color:#fff}
+.mini.azul{background:var(--azul);color:#fff}
+
+.btn{
+  width:100%;border:0;border-radius:10px;padding:15px;font-size:14px;
+  font-weight:800;letter-spacing:.4px;cursor:pointer;font-family:inherit;
+}
+.btn:active{transform:scale(.99)}
+.btn-prim{background:var(--ok);color:#fff}
+.btn-sec{background:var(--teal);color:#fff}
+.btn-ter{background:#fff;color:var(--azul);border:1px solid var(--linha)}
+.btn-x{background:#fff;color:var(--erro);border:1px solid #f3c7c7}
+
+#reader{width:100%;border-radius:10px;overflow:hidden;background:#000;display:none;margin-top:10px}
+#reader.on{display:block}
+#reader video{width:100%!important;display:block}
+#reader__dashboard,#reader__header_message,#reader__status_span{display:none!important}
+
+.msg{
+  margin-top:10px;font-size:12.5px;line-height:1.55;white-space:pre-wrap;
+  word-break:break-word;padding:10px 12px;border-radius:9px;background:#f8fafc;
+  border-left:4px solid var(--linha);display:none;
+}
+.msg.on{display:block}
+.msg.ok{border-left-color:var(--ok);background:#f0fdf4;color:#14532d}
+.msg.aviso{border-left-color:var(--aviso);background:#fffbeb;color:#78350f}
+.msg.erro{border-left-color:var(--erro);background:#fef2f2;color:#7f1d1d}
+
+.cands{margin-top:8px}
+.cand{
+  background:#f8fafc;border:1px solid var(--linha);border-radius:9px;
+  padding:10px;margin-bottom:6px;cursor:pointer;
+}
+.cand:active{background:#eef6f6;border-color:var(--teal)}
+.cand .pn{font-family:Consolas,monospace;font-weight:800;font-size:13px;color:var(--azul)}
+.cand .ds{font-size:11.5px;color:var(--muted);margin-top:2px}
+
+.tab-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+table{width:100%;border-collapse:collapse;font-size:12px;min-width:680px}
+th{
+  background:var(--azul);color:#fff;text-align:left;padding:9px 8px;
+  font-size:10px;letter-spacing:.5px;text-transform:uppercase;white-space:nowrap;
+}
+td{padding:9px 8px;border-bottom:1px solid var(--linha);vertical-align:top}
+tr:nth-child(even) td{background:#f8fafc}
+td.mono{font-size:11.5px;font-weight:700}
+.vazio{text-align:center;color:var(--muted);font-size:12.5px;padding:22px}
+
+.barra{
+  position:fixed;left:0;right:0;bottom:0;z-index:40;background:#fff;
+  border-top:1px solid var(--linha);
+  padding:10px 12px calc(10px + env(safe-area-inset-bottom));
+  display:flex;gap:8px;box-shadow:0 -2px 10px rgba(15,23,42,.06);
+}
+.barra .btn{flex:1}
+
+.tag{
+  display:inline-block;font-size:10px;font-weight:800;letter-spacing:.4px;
+  padding:2px 7px;border-radius:20px;background:#e2e8f0;color:#334155;
+  margin-left:6px;vertical-align:middle;
+}
+.tag.cation{background:#dbeafe;color:#1e40af}
+.tag.mando{background:#dcfce7;color:#166534}
+.tag.forn{background:#fef3c7;color:#92400e}
 </style>
 </head>
+
 <body>
 
-<div class="bar">
-  <h1>Inspeção de Recebimento</h1>
-  <span class="sync" id="sync">•••</span>
-</div>
+<header>
+  <div>
+    <div class="tit">Inspeção de Recebimento</div>
+    <div class="sub">Mando · CATiON · Fornecedor</div>
+  </div>
+  <div class="sync off" id="sync">•••</div>
+</header>
 
-<div class="wrap">
+<main>
 
-  <div class="tabline active" id="tab-leitura">
+  <section class="card">
+    <h2>Bipe ou escaneie a etiqueta</h2>
+    <p class="dica">
+      <b>Mando:</b> P000…PN…LOTE…QTD<br>
+      <b>CATiON:</b> 0000000280_000000BC410B4200.A2<br>
+      <b>Fornecedor:</b> prid889595
+    </p>
 
-    <div class="bipe">
-      <label class="lbl" style="margin-top:0">Bipar etiqueta</label>
-      <div class="row">
-        <button class="btn btn-teal btn-sm" style="flex:2"
-                onclick="bipar('auto')">📷 Bipar etiqueta</button>
-        <button class="btn btn-ghost btn-sm" style="flex:1"
-                onclick="bipar('mando')">Mando</button>
-        <button class="btn btn-ghost btn-sm" style="flex:1"
-                onclick="bipar('fornecedor')">Forn.</button>
+    <div class="linha">
+      <div class="campo">
+        <label for="bipe">Código lido</label>
+        <input id="bipe" class="mono" placeholder="Aponte o leitor aqui"
+               autocomplete="off" autocapitalize="characters" spellcheck="false">
       </div>
-      <div class="hint">Mando: P000…PN…LOTE…QTD · Fornecedor: prid889595</div>
-      <div id="bip-msg"></div>
+      <button class="mini azul" id="btnColar" type="button">Colar</button>
     </div>
 
-    <div class="card">
-      <label class="lbl">Responsável pela liberação</label>
-      <div class="row">
-        <select id="resp" style="flex:3"></select>
-        <button class="btn btn-teal btn-sm" style="flex:1"
-                onclick="novoResponsavel()">+ Novo</button>
+    <div class="linha" style="margin-top:10px">
+      <div class="campo">
+        <label for="modo">Tipo de etiqueta</label>
+        <select id="modo">
+          <option value="auto">Automático</option>
+          <option value="mando">Mando</option>
+          <option value="cation">CATiON</option>
+          <option value="fornecedor">Fornecedor</option>
+        </select>
       </div>
-    </div>
-
-    <div class="card">
-      <label class="lbl">PART NUMBER (catálogo do Cadastro)</label>
-      <div class="row">
-        <input id="busca" placeholder="parte do PN ou da descrição"
-               autocomplete="off" autocapitalize="characters"
-               oninput="buscarPreview()"
-               onkeydown="if(event.key==='Enter'){event.preventDefault();buscar()}">
-        <button class="btn btn-ghost btn-sm" style="flex:0 0 auto"
-                onclick="bipar('pn')">📷</button>
-      </div>
-      <div class="hint">Ex: 249 lista BC14024901.A e BC14124901.A</div>
-      <div class="err" id="busca-msg"></div>
-      <div id="cands" style="margin-top:8px"></div>
-    </div>
-
-    <div class="card">
-      <label class="lbl">PART NUMBER</label>
-      <input id="f_part_number" autocapitalize="characters">
-
-      <label class="lbl">DESCRIÇÃO</label>
-      <input id="f_descricao">
-
-      <label class="lbl">QUANTIDADE</label>
-      <input id="f_quantidade" inputmode="decimal">
-
-      <label class="lbl" style="display:flex;justify-content:space-between;
-                                align-items:center">
-        <span>LOTE MANDO</span>
-        <button class="btn-na" onclick="marcarNA('f_lote_mando')">N/A</button>
-      </label>
-      <input id="f_lote_mando">
-
-      <label class="lbl" style="display:flex;justify-content:space-between;
-                                align-items:center">
-        <span>LOTE FORNECEDOR</span>
-        <button class="btn-na" onclick="marcarNA('f_lote_fornecedor')">N/A</button>
-      </label>
-      <input id="f_lote_fornecedor">
-
-      <label class="lbl" style="display:flex;justify-content:space-between;
-                                align-items:center">
-        <span>DATA DE ENTRADA</span>
-        <button class="btn-na" style="background:#002c5f"
-                onclick="marcarHoje()">hoje</button>
-      </label>
-      <input id="f_data_entrada" type="date">
-
-      <div class="err" id="form-msg"></div>
-    </div>
-
-    <div class="card">
-      <button class="btn btn-primary" onclick="adicionar()">
-        ADICIONAR LINHA
-      </button>
-      <button class="btn btn-teal" style="margin-top:8px"
-              onclick="adicionarLimpar()">
-        Adicionar e limpar
+      <button class="btn" id="btnCamera" type="button"
+              style="width:auto;padding:13px 18px;font-size:12px;background:var(--azul);color:#fff">
+        Câmera
       </button>
     </div>
 
-  </div>
+    <div id="reader"></div>
+    <div class="msg" id="msg"></div>
+  </section>
 
-  <div class="tabline" id="tab-linhas">
-    <div class="count">
-      <span id="cnt">0 linhas</span>
-      <span id="cnt-pn" style="color:#5a6b7a;font-weight:400"></span>
-    </div>
-    <div class="card" style="padding:0;overflow:hidden">
-      <div style="overflow:auto;max-height:60vh">
-        <table id="tabela">
-          <thead>
-            <tr>
-              <th>PN</th><th>DESCRIÇÃO</th><th>QTD</th>
-              <th>LOTE MANDO</th><th>LOTE FORN.</th>
-              <th>DATA</th><th>RESP.</th><th></th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
+  <section class="card">
+    <h2>Dados da leitura</h2>
+
+    <label for="fBusca">Buscar no catálogo (PN ou descrição)</label>
+    <input id="fBusca" class="mono" placeholder="Ex.: 249 ou SUPORTE"
+           autocomplete="off" autocapitalize="characters" spellcheck="false">
+    <div class="cands" id="cands"></div>
+
+    <label for="fPn">PART NUMBER</label>
+    <input id="fPn" class="mono" autocomplete="off" autocapitalize="characters" spellcheck="false">
+
+    <label for="fDesc">DESCRIÇÃO</label>
+    <input id="fDesc" autocomplete="off" autocapitalize="characters">
+
+    <label for="fQtd">QUANTIDADE</label>
+    <input id="fQtd" inputmode="numeric" autocomplete="off">
+
+    <div class="linha">
+      <div class="campo">
+        <label for="fLoteM">LOTE MANDO</label>
+        <input id="fLoteM" class="mono" autocomplete="off" autocapitalize="characters">
       </div>
+      <button class="mini na" type="button" data-na="fLoteM">N/A</button>
     </div>
-    <div class="empty" id="vazio">Nenhuma linha ainda.</div>
-    <button class="btn btn-danger" style="margin-top:12px"
-            onclick="limparTudo()">LIMPAR TODAS AS LINHAS</button>
-  </div>
 
-  <div class="tabline" id="tab-catalogo">
-    <div class="card">
-      <label class="lbl">Buscar no catálogo</label>
-      <input id="cat_busca" placeholder="parte do PN ou da descrição"
-             autocomplete="off" autocapitalize="characters"
-             oninput="renderCatalogo()">
-      <div class="hint">Fonte: módulo Cadastros — somente leitura.</div>
-    </div>
-    <div class="card">
-      <div class="count">
-        <span id="cat_count">0 PNs</span>
+    <div class="linha">
+      <div class="campo">
+        <label for="fLoteF">LOTE FORNECEDOR</label>
+        <input id="fLoteF" class="mono" autocomplete="off" autocapitalize="characters">
       </div>
-      <div id="cat_lista"></div>
+      <button class="mini na" type="button" data-na="fLoteF">N/A</button>
     </div>
-  </div>
 
-</div>
+    <div class="linha">
+      <div class="campo">
+        <label for="fData">DATA DE ENTRADA</label>
+        <input id="fData" type="date">
+      </div>
+      <button class="mini azul" type="button" data-hoje="fData">Hoje</button>
+    </div>
 
-<div class="fita">
-  <button class="btn btn-ghost" id="tabbtn-leitura"
-          onclick="mudarAba('leitura')">Nova</button>
-  <button class="btn btn-ghost" id="tabbtn-linhas"
-          onclick="mudarAba('linhas')">Linhas (<span id="badge">0</span>)</button>
-  <button class="btn btn-ghost" id="tabbtn-catalogo"
-          onclick="mudarAba('catalogo')">Catálogo</button>
-  <button class="btn btn-primary" style="flex:0 0 auto;padding:14px 16px"
-          onclick="exportar()">📥</button>
-</div>
+    <div class="linha">
+      <div class="campo">
+        <label for="fResp">RESPONSÁVEL</label>
+        <input id="fResp" list="listaResp" placeholder="Quem libera" autocomplete="off">
+      </div>
+      <button class="mini azul" type="button" id="btnResp">+</button>
+    </div>
+    <datalist id="listaResp"></datalist>
+  </section>
 
-<div id="scan-box">
-  <div id="scan-top">
-    <div id="scan-titulo">Aponte para a etiqueta</div>
-    <button onclick="fecharScan()">Fechar</button>
-  </div>
-  <div id="qr-reader"></div>
-  <div id="scan-bottom">
-    <div id="scan-msg"></div>
-    <button onclick="entradaManual()">Digitar</button>
-  </div>
+  <section class="card">
+    <h2>Leituras <span class="tag" id="tagCount">0</span></h2>
+    <div class="tab-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Part Number</th>
+            <th>Descrição</th>
+            <th>Qtd</th>
+            <th>Lote Mando</th>
+            <th>Lote Forn.</th>
+            <th>Data</th>
+            <th>Resp.</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="corpo">
+          <tr><td colspan="8" class="vazio">Nenhuma leitura ainda.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="linha" style="margin-top:12px">
+      <button class="btn btn-ter" id="btnCsv" type="button" style="font-size:12px">Exportar CSV</button>
+      <button class="btn btn-x" id="btnLimpar" type="button" style="font-size:12px">Limpar lista</button>
+    </div>
+  </section>
+
+</main>
+
+<div class="barra">
+  <button class="btn btn-prim" id="btnAdd" type="button">ADICIONAR</button>
+  <button class="btn btn-sec" id="btnAddLimpar" type="button">ADICIONAR E LIMPAR</button>
 </div>
 
 <script>
-// ===================== CONFIG =====================
+/* =======================================================================
+   FIREBASE — mesma base usada pelo cadastro.py / firebase_sync.py
+   ======================================================================= */
 const FB_CONFIG = {
   apiKey: "AIzaSyBQ7_k7huhS8oAyKp0OsbEajXFmrNxcrlo",
   authDomain: "kyro-7cb7a.firebaseapp.com",
@@ -263,794 +286,759 @@ const FB_CONFIG = {
 };
 
 const REF_PRODUTOS = "cadastros/produtos_mestre";
-const REF_RESPONS = "hl_inspecao/responsaveis";
+const REF_RESPONS  = "hl_inspecao/responsaveis";
 const REF_LEITURAS = "hl_inspecao/leituras";
-
 const NA = "N/A";
-const ORIGEM = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)
-               ? "MOBILE" : "PC";
+const ORIGEM = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) ? "MOBILE" : "PC";
 
-let db = null, fbOk = false;
-let produtos = [], responsaveis = [], leituras = [];
+let db = null;
+let produtos = [];
+let responsaveis = [];
+let leituras = [];
 
-// ===================== FIREBASE =====================
+/* =======================================================================
+   UTIL
+   ======================================================================= */
+function $(id) { return document.getElementById(id); }
+function up(t) { return String(t == null ? "" : t).trim().toUpperCase(); }
+function soAlnum(t) { return up(t).replace(/[^A-Z0-9]/g, ""); }
+
+function hoje() {
+  const d = new Date();
+  return d.getFullYear() + "-" +
+         String(d.getMonth() + 1).padStart(2, "0") + "-" +
+         String(d.getDate()).padStart(2, "0");
+}
+
+function esc(t) {
+  return String(t == null ? "" : t)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function msg(txt, tipo) {
+  const el = $("msg");
+  el.className = "msg on " + (tipo || "");
+  el.textContent = txt;
+}
+function msgOff() { $("msg").className = "msg"; $("msg").textContent = ""; }
+
+function pintarSync(ok) {
+  const el = $("sync");
+  el.className = "sync " + (ok ? "on" : "off");
+  el.textContent = ok ? "● Sincronizado" : "○ Offline";
+}
+
+/* =======================================================================
+   FIREBASE — LEITURA E ESCRITA
+   ======================================================================= */
+function listaDe(cru) {
+  const out = [];
+  if (!cru || typeof cru !== "object") return out;
+  Object.keys(cru).forEach(function (k) {
+    const v = cru[k];
+    if (v && typeof v === "object") {
+      const item = Object.assign({}, v);
+      item._id = k;
+      out.push(item);
+    }
+  });
+  return out;
+}
+
+function normalizarProduto(p) {
+  if (!p || typeof p !== "object") return null;
+  const pn = up(p.partNumber || p.pn);
+  if (!pn) return null;
+  return {
+    pn: pn,
+    descricao: up(p.descricao),
+    fornecedor: up(p.fornecedor),
+    codigoFornecedor: up(p.codigoFornecedor),
+    multiploCaixa: Number(p.multiploCaixa) || 0,
+    multiploPallet: Number(p.multiploPallet) || 0
+  };
+}
+
 function conectar() {
   try {
-    firebase.initializeApp(FB_CONFIG);
+    if (!firebase.apps.length) firebase.initializeApp(FB_CONFIG);
     db = firebase.database();
-    fbOk = true;
-    escutar();
+
+    db.ref(REF_PRODUTOS).on("value", function (snap) {
+      produtos = listaDe(snap.val())
+        .map(normalizarProduto)
+        .filter(Boolean)
+        .sort(function (a, b) { return a.pn.localeCompare(b.pn); });
+      pintarSync(true);
+      if (!leituras.length) {
+        msg("Catálogo carregado — " + produtos.length + " PNs vindos do Cadastro.", "ok");
+      }
+    }, function (e) {
+      pintarSync(false);
+      msg("Falha ao ler o catálogo: " + e.message, "erro");
+    });
+
+    db.ref(REF_RESPONS).on("value", function (snap) {
+      responsaveis = listaDe(snap.val())
+        .map(function (r) { return { nome: r.nome || "" }; })
+        .filter(function (r) { return r.nome; })
+        .sort(function (a, b) { return up(a.nome).localeCompare(up(b.nome)); });
+      pintarResponsaveis();
+    }, function () {});
+
+    db.ref(REF_LEITURAS).on("value", function (snap) {
+      leituras = listaDe(snap.val()).sort(function (a, b) {
+        return Number(a.criado || 0) - Number(b.criado || 0);
+      });
+      pintarLeituras();
+      pintarSync(true);
+    }, function () { pintarSync(false); });
+
   } catch (e) {
-    console.warn("Firebase indisponível:", e);
-    setSync(false);
+    pintarSync(false);
+    msg("Firebase não inicializou: " + e.message, "erro");
   }
 }
 
-function setSync(on) {
-  const el = document.getElementById('sync');
-  el.textContent = on ? '● Sincronizado' : '○ Offline';
-  el.className = 'sync ' + (on ? 'on' : '');
-}
-
-function escutar() {
-  db.ref(REF_PRODUTOS).on('value', snap => {
-    const cru = snap.val() || {};
-    const arr = Array.isArray(cru) ? cru : Object.values(cru);
-
-    produtos = arr
-      .filter(p => p && typeof p === 'object')
-      .map(p => ({
-        pn: String(p.partNumber || p.pn || '').trim().toUpperCase(),
-        descricao: String(p.descricao || '').trim().toUpperCase(),
-        fornecedor: String(p.fornecedor || '').trim().toUpperCase(),
-        codigoFornecedor:
-          String(p.codigoFornecedor || '').trim().toUpperCase(),
-        multiploCaixa: Number(p.multiploCaixa) || 0,
-        multiploPallet: Number(p.multiploPallet) || 0
-      }))
-      .filter(p => p.pn)
-      .sort((a, b) => a.pn.localeCompare(b.pn));
-
-    renderCatalogo();
-  }, err => console.warn("catalogo:", err));
-
-  db.ref(REF_RESPONS).on('value', snap => {
-    const v = snap.val() || {};
-    responsaveis = Object.values(v).map(r => r.nome).filter(Boolean);
-    renderResponsaveis();
-  }, err => console.warn(err));
-
-  db.ref(REF_LEITURAS).on('value', snap => {
-    const v = snap.val() || {};
-    leituras = Object.entries(v)
-      .map(([id, obj]) => Object.assign({ _id: id }, obj))
-      .sort((a, b) => (a.criado || 0) - (b.criado || 0));
-    renderTabela();
-    setSync(true);
-  }, err => { console.warn(err); setSync(false); });
-}
-
-// ===================== RESPONSÁVEIS =====================
-function renderResponsaveis() {
-  const sel = document.getElementById('resp');
-  const atual = sel.value;
-  sel.innerHTML = '<option value="">— selecione —</option>' +
-    responsaveis.map(n => `<option>${esc(n)}</option>`).join('');
-  if (atual) sel.value = atual;
-}
-
-async function novoResponsavel() {
-  const nome = prompt("Nome do responsável:");
-  if (!nome) return;
-  const chave = nome.trim().toUpperCase().replace(/\s+/g, '_');
-  try {
-    await db.ref(`${REF_RESPONS}/${chave}`).set({ nome: nome.trim() });
-    document.getElementById('resp').value = nome.trim();
-  } catch (e) {
-    alert("Erro ao salvar: " + e.message);
-  }
-}
-
-// ===================== LEITURA DE ETIQUETAS =====================
-function soAlnum(txt) {
-  return String(txt == null ? '' : txt)
-    .toUpperCase().replace(/[^A-Z0-9]/g, '');
-}
-
+/* =======================================================================
+   PARSERS DE ETIQUETA
+   ======================================================================= */
 function detectarTipo(bruto) {
-  const t = soAlnum(bruto);
-  if (!t) return 'desconhecido';
-  if (t.startsWith('PRID')) return 'fornecedor';
-  if (/^P0{6,}/.test(t) && t.length >= 20) return 'mando';
-  if (t.length >= 24 && /\d{6}$/.test(t)) return 'mando';
-  if (/^\d{4,12}$/.test(t)) return 'fornecedor';
-  return 'desconhecido';
+  const cru = String(bruto == null ? "" : bruto).trim();
+  if (!cru) return "desconhecido";
+
+  /* CATiON: 0000000280_000000BC410B4200.A2 */
+  if (/^[0-9]+\s*_/.test(cru)) return "cation";
+
+  const t = soAlnum(cru);
+  if (!t) return "desconhecido";
+
+  if (t.indexOf("PRID") === 0) return "fornecedor";
+  if (/^P0{6,}/.test(t) && t.length >= 20) return "mando";
+  if (t.length >= 24 && /\d{6}$/.test(t)) return "mando";
+  if (/^\d{4,12}$/.test(t)) return "fornecedor";
+
+  return "desconhecido";
 }
 
-// MANDO: P + zeros + PN + zeros + LOTE + zeros + QTD
-// P00000000000000BH9003Z10000000000VKRA000600
+/* Mando: P + zeros + PN + zeros + LOTE + zeros + QTD */
 function parseMando(bruto) {
   const t = soAlnum(bruto);
   if (!t) return null;
 
-  const corpo = t.startsWith('P') ? t.slice(1) : t;
+  const corpo = t.charAt(0) === "P" ? t.slice(1) : t;
 
   let m = corpo.match(/([A-Z]{2,10})0*(\d{1,6})$/);
   if (!m) m = corpo.match(/([A-Z][A-Z0-9]{1,9})0*(\d{1,6})$/);
   if (!m) return null;
 
   const lote = m[1];
-  const quantidade = String(parseInt(m[2], 10) || 0);
+  const qtd = parseInt(m[2], 10);
+  if (!qtd || qtd <= 0) return null;
 
-  const resto = corpo.slice(0, m.index).replace(/^0+/, '');
+  let resto = corpo.slice(0, m.index).replace(/^0+/, "");
+  resto = resto.replace(/0{4,}$/, "").replace(/^0+/, "");
   if (!resto) return null;
 
-  return { pn: resto, lote, quantidade, bruto: t };
+  return { tipo: "mando", pn: resto, lote: lote, quantidade: String(qtd), bruto: t };
 }
 
-// FORNECEDOR: prid889595 · 889595 · "DASOL 889595 2026-11-12"
+/* CATiON: [zeros]QTD _ [zeros]PN   (sem lote) */
+function parseCation(bruto) {
+  const t = String(bruto == null ? "" : bruto).trim().toUpperCase();
+  const i = t.indexOf("_");
+  if (i < 0) return null;
+
+  const esq = t.slice(0, i).replace(/[^0-9]/g, "");
+  const qtd = parseInt(esq, 10);
+  if (!qtd || qtd <= 0) return null;
+
+  let dir = t.slice(i + 1).replace(/_/g, "").replace(/[^A-Z0-9.\-\/]/g, "");
+  dir = dir.replace(/^0+/, "").trim();
+  if (!dir) return null;
+
+  return { tipo: "cation", pn: dir, lote: null, quantidade: String(qtd), bruto: t };
+}
+
+/* Fornecedor: lote */
+const FORMATOS_FORNECEDOR = { DASOL: [/PRID[^A-Z0-9]*([A-Z0-9]{3,20})/] };
+const PADROES_GENERICOS = [
+  /PRID[^A-Z0-9]*([A-Z0-9]{3,20})/,
+  /LOTE[^A-Z0-9]*([A-Z0-9]{3,20})/,
+  /LOT[^A-Z0-9]*([A-Z0-9]{3,20})/
+];
+
 function parseFornecedor(bruto) {
-  const t = String(bruto == null ? '' : bruto).toUpperCase();
-  if (!t.trim()) return null;
+  const t = up(bruto);
+  if (!t) return null;
 
-  let m = t.match(/PRID[^A-Z0-9]*([A-Z0-9]{3,20})/);
-  if (m) return { lote: m[1], fornecedor: 'DASOL', bruto: t };
+  let forn, pads, i, m;
 
-  m = t.match(/LOTE[^A-Z0-9]*([A-Z0-9]{3,20})/);
-  if (m) return { lote: m[1], fornecedor: '?', bruto: t };
+  for (forn in FORMATOS_FORNECEDOR) {
+    pads = FORMATOS_FORNECEDOR[forn];
+    for (i = 0; i < pads.length; i++) {
+      m = t.match(pads[i]);
+      if (m) return { tipo: "fornecedor", lote: m[1], fornecedor: forn, bruto: t };
+    }
+  }
 
-  let limpo = t.replace(/\d{4}[-/.]\d{1,2}[-/.]\d{1,2}/g, ' ');
-  limpo = limpo.replace(/\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4}/g, ' ');
+  for (i = 0; i < PADROES_GENERICOS.length; i++) {
+    m = t.match(PADROES_GENERICOS[i]);
+    if (m) return { tipo: "fornecedor", lote: m[1], fornecedor: "?", bruto: t };
+  }
+
+  let limpo = t.replace(/\d{4}[-/.]\d{1,2}[-/.]\d{1,2}/g, " ");
+  limpo = limpo.replace(/\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4}/g, " ");
 
   const achados = limpo.match(/(?<!\d)\d{4,12}(?!\d)/g);
   if (achados && achados.length) {
-    achados.sort((a, b) => b.length - a.length);
-    return { lote: achados[0], fornecedor: '?', bruto: t };
+    achados.sort(function (a, b) { return b.length - a.length; });
+    return { tipo: "fornecedor", lote: achados[0], fornecedor: "?", bruto: t };
   }
+
   return null;
 }
 
-// Resolve o PN da etiqueta contra o catálogo do Cadastro.
-// A etiqueta traz BH9003Z100 + zeros de preenchimento; o cadastro tem
-// BH9003Z100.D. A comparação descarta os zeros à direita da etiqueta.
+/* =======================================================================
+   RESOLVER PN NO CATÁLOGO
+   ======================================================================= */
 function resolverPn(pnBruto) {
   const alvo = soAlnum(pnBruto);
-  if (!alvo) return { produto: null, motivo: 'vazio', candidatos: [] };
-
-  const base = alvo.replace(/0+$/, '');
-  const chave = base.length >= 5 ? base : alvo;
+  if (!alvo) return { produto: null, motivo: "vazio", candidatos: [] };
 
   const exatos = [], prefixos = [], parciais = [];
 
-  produtos.forEach(p => {
+  produtos.forEach(function (p) {
     const n = soAlnum(p.pn);
     if (!n) return;
-
-    if (n === alvo || n === chave) { exatos.push(p); return; }
-    if (n.startsWith(alvo)) { prefixos.push(p); return; }
-    if (chave.length >= 6 && n.startsWith(chave)) { prefixos.push(p); return; }
-    if (chave.length >= 4 && (n.includes(chave) || chave.includes(n))) {
-      parciais.push(p);
-    }
+    if (n === alvo) exatos.push(p);
+    else if (n.indexOf(alvo) === 0) prefixos.push(p);
+    else if (n.indexOf(alvo) > -1 || alvo.indexOf(n) > -1) parciais.push(p);
   });
 
-  const escolher = lista => {
-    const ord = lista.slice().sort((a, b) => a.pn.length - b.pn.length);
-    return {
-      produto: ord[0],
-      motivo: lista.length === 1 ? 'prefixo' : 'multiplo',
-      candidatos: lista.length === 1 ? [] : ord.slice(0, 6)
-    };
-  };
+  const porTam = function (a, b) { return a.pn.length - b.pn.length; };
 
-  if (exatos.length) return escolher(exatos);
-  if (prefixos.length) return escolher(prefixos);
-  if (parciais.length) return escolher(parciais);
-
-  return { produto: null, motivo: 'nenhum', candidatos: [] };
-}
-
-function setBipMsg(html, kind) {
-  const el = document.getElementById('bip-msg');
-  el.className = kind || '';
-  el.innerHTML = html || '';
-}
-
-// ===================== SCANNER (html5-qrcode) =====================
-let html5Qr = null;
-let scanRodando = false;
-let scanCb = null;
-
-function setScanMsg(txt) {
-  const el = document.getElementById('scan-msg');
-  if (el) el.textContent = txt || '';
-}
-
-const FORMATOS_QR = [
-  'QR_CODE', 'DATA_MATRIX', 'CODE_128', 'CODE_39', 'CODE_93',
-  'EAN_13', 'EAN_8', 'UPC_A', 'UPC_E', 'ITF', 'CODABAR'
-];
-
-function formatosSuportados() {
-  const F = window.Html5QrcodeSupportedFormats || {};
-  const out = [];
-  FORMATOS_QR.forEach(k => {
-    if (F[k] !== undefined && F[k] !== null) out.push(F[k]);
-  });
-  return out.length ? out : undefined;
-}
-
-// Garante a lib carregada (CDN principal no <head>, reserva aqui).
-function carregarHtml5Qrcode() {
-  if (window.Html5Qrcode) return Promise.resolve(true);
-
-  const urls = [
-    'https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js',
-    'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js'
-  ];
-
-  return urls.reduce((p, url) => p.then(ok => ok ? true : new Promise(res => {
-    const s = document.createElement('script');
-    s.src = url;
-    s.async = true;
-    s.onload = () => res(!!window.Html5Qrcode);
-    s.onerror = () => res(false);
-    document.head.appendChild(s);
-  })), Promise.resolve(false));
-}
-
-async function abrirCamera(cb) {
-  const box = document.getElementById('scan-box');
-
-  if (box.style.display === 'flex' && scanRodando) {
-    await fecharScan();
-    return;
+  if (exatos.length === 1) return { produto: exatos[0], motivo: "exato", candidatos: [] };
+  if (prefixos.length === 1) return { produto: prefixos[0], motivo: "prefixo", candidatos: [] };
+  if (prefixos.length > 1) {
+    prefixos.sort(porTam);
+    return { produto: prefixos[0], motivo: "multiplo", candidatos: prefixos.slice(0, 6) };
+  }
+  if (parciais.length === 1) return { produto: parciais[0], motivo: "contem", candidatos: [] };
+  if (parciais.length > 1) {
+    parciais.sort(porTam);
+    return { produto: parciais[0], motivo: "multiplo", candidatos: parciais.slice(0, 6) };
   }
 
-  scanCb = cb || null;
-  box.style.display = 'flex';
-  setScanMsg('Abrindo a câmera…');
-
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    setScanMsg('Este navegador não libera a câmera. Use "Digitar".');
-    return;
-  }
-
-  const okLib = await carregarHtml5Qrcode();
-  if (!okLib || typeof Html5Qrcode === 'undefined') {
-    setScanMsg('Leitor não carregou. Toque em "Digitar" para inserir o código.');
-    return;
-  }
-
-  try {
-    if (!html5Qr) {
-      html5Qr = new Html5Qrcode('qr-reader', { verbose: false });
-    }
-
-    await html5Qr.start(
-      { facingMode: 'environment' },
-      {
-        fps: 10,
-        qrbox: (w, h) => {
-          const m = Math.floor(Math.min(w, h) * 0.75);
-          return { width: m, height: m };
-        },
-        formatsToSupport: formatosSuportados(),
-        experimentalFeatures: { useBarCodeDetectorIfSupported: true }
-      },
-      texto => entregarScan(texto),
-      () => {}   // "não encontrado" é normal entre frames
-    );
-
-    scanRodando = true;
-    setScanMsg('Aponte para a etiqueta');
-  } catch (e) {
-    scanRodando = false;
-    const msg = (e && e.message) ? e.message : String(e);
-    setScanMsg('Não foi possível abrir a câmera: ' + msg +
-               ' — toque em "Digitar".');
-  }
+  return { produto: null, motivo: "nenhum", candidatos: [] };
 }
 
-function entregarScan(raw) {
-  if (!raw) return;
-  const cb = scanCb;
-  scanCb = null;
-  fecharScan().then(() => {
-    if (cb) cb(String(raw).trim());
-  });
-}
+/* =======================================================================
+   PROCESSAMENTO DA ETIQUETA
+   ======================================================================= */
+function processarEtiqueta(texto) {
+  const modo = $("modo").value;
+  const tipo = (!modo || modo === "auto") ? detectarTipo(texto) : modo;
 
-async function fecharScan() {
-  const box = document.getElementById('scan-box');
-  box.style.display = 'none';
-  setScanMsg('');
-
-  const rodando = scanRodando;
-  scanRodando = false;
-
-  if (html5Qr) {
-    try { if (rodando) await html5Qr.stop(); } catch (e) {}
-    try { html5Qr.clear(); } catch (e) {}
-    html5Qr = null;
-  }
-
-  const alvo = document.getElementById('qr-reader');
-  if (alvo) alvo.innerHTML = '';
-}
-
-function entradaManual() {
-  const cb = scanCb;
-  const v = prompt('Digite ou cole o código da etiqueta:');
-  if (v === null) return;
-
-  const texto = v.trim();
-  if (!texto) return;
-
-  scanCb = null;
-  fecharScan();
-
-  if (cb) cb(texto);
-  else processarEtiqueta(texto, 'auto');
-}
-
-// ===================== BIPE =====================
-function bipar(modo) {
-  const titulo = document.getElementById('scan-titulo');
-  if (modo === 'mando') titulo.textContent = 'Bipe a etiqueta da MANDO';
-  else if (modo === 'fornecedor') titulo.textContent = 'Etiqueta do FORNECEDOR';
-  else if (modo === 'pn') titulo.textContent = 'Bipe o código do produto';
-  else titulo.textContent = 'Aponte para a etiqueta';
-
-  abrirCamera(raw => {
-    if (modo === 'pn') {
-      document.getElementById('busca').value = raw;
-      buscar();
-      return;
-    }
-    processarEtiqueta(raw, modo);
-  });
-}
-
-function processarEtiqueta(raw, modo) {
-  const tipo = (modo === 'auto' || !modo) ? detectarTipo(raw) : modo;
-
-  if (tipo === 'mando') {
-    const d = parseMando(raw);
+  if (tipo === "cation") {
+    const d = parseCation(texto);
     if (!d) {
-      setBipMsg(`<div class="err">Etiqueta Mando fora do padrão.<br>
-        <span class="tag">${esc(raw)}</span></div>`);
+      msg("Código CATiON fora do padrão.\n" + texto.slice(0, 70) +
+          "\nEsperado: 0000000280_000000BC410B4200.A2", "erro");
       return;
     }
-
-    const r = resolverPn(d.pn);
-    let pn = d.pn, descricao = '';
-    if (r.produto) { pn = r.produto.pn; descricao = r.produto.descricao; }
-
-    document.getElementById('f_part_number').value = pn;
-    document.getElementById('f_descricao').value = descricao;
-    document.getElementById('f_quantidade').value = d.quantidade;
-    document.getElementById('f_lote_mando').value = d.lote;
-    if (!document.getElementById('f_data_entrada').value) marcarHoje();
-
-    let msg = `<div class="ok"><b>MANDO lido</b><br>
-      PN etiqueta: ${esc(d.pn)} · Lote: ${esc(d.lote)} · Qtd: ${esc(d.quantidade)}`;
-
-    if (r.produto) {
-      msg += `<br>Catálogo: ${esc(r.produto.pn)} — ${esc(r.produto.descricao)}`;
-      if (r.motivo === 'multiplo') {
-        msg += `<br><span style="color:#b45309">${r.candidatos.length} PNs parecidos — confirme abaixo.</span>`;
-      }
-    } else {
-      msg += `<br><span style="color:#b45309">PN não encontrado no Cadastro.</span>`;
-    }
-    msg += `</div>`;
-    setBipMsg(msg);
-
-    if (r.motivo === 'multiplo') mostrarCandidatosBip(r.candidatos);
-    else limparCandidatos();
-
-    document.getElementById('f_lote_fornecedor').focus();
+    aplicarCation(d);
     return;
   }
 
-  if (tipo === 'fornecedor') {
-    const d = parseFornecedor(raw);
+  if (tipo === "mando") {
+    const d = parseMando(texto);
     if (!d) {
-      setBipMsg(`<div class="err">Etiqueta de fornecedor fora do padrão.<br>
-        <span class="tag">${esc(raw)}</span></div>`);
+      msg("Etiqueta Mando fora do padrão.\n" + texto.slice(0, 70) +
+          "\nEsperado: P000…PN…LOTE…QTD", "erro");
       return;
     }
-    document.getElementById('f_lote_fornecedor').value = d.lote;
-    if (!document.getElementById('f_data_entrada').value) marcarHoje();
-
-    setBipMsg(`<div class="ok"><b>FORNECEDOR lido</b><br>
-      Lote: ${esc(d.lote)} · Fornecedor: ${esc(d.fornecedor)}</div>`);
+    aplicarMando(d);
     return;
   }
 
-  setBipMsg(`<div class="err">Código não reconhecido.<br>
-    <span class="tag">${esc(raw)}</span><br>
-    Use os botões Mando / Forn. para forçar o tipo.</div>`);
+  if (tipo === "fornecedor") {
+    const d = parseFornecedor(texto);
+    if (!d) {
+      msg("Etiqueta de fornecedor fora do padrão.\n" + texto.slice(0, 70) +
+          "\nEsperado: prid889595", "erro");
+      return;
+    }
+    aplicarFornecedor(d);
+    return;
+  }
+
+  msg("Código não reconhecido.\n" + texto.slice(0, 70) +
+      "\nEscolha o tipo no seletor e bipe de novo.", "erro");
 }
 
-function mostrarCandidatosBip(lista) {
-  const box = document.getElementById('cands');
-  box.innerHTML = `<div class="hint" style="margin-bottom:6px">
-    PNs parecidos com a etiqueta — toque para confirmar:</div>` +
-    lista.map(p =>
-      `<div class="cand" onclick="escolherPorPn('${esc(p.pn)}')">
-        <b>${esc(p.pn)}</b><br>
-        <span style="color:#5a6b7a">${esc(p.descricao)}</span>
-        ${detalheExtra(p)}
-      </div>`).join('');
+function aplicarMando(d) {
+  const r = resolverPn(d.pn);
+  const p = r.produto;
+
+  $("fPn").value = p ? p.pn : d.pn;
+  $("fDesc").value = p ? p.descricao : "";
+  $("fQtd").value = d.quantidade;
+  $("fLoteM").value = d.lote || "";
+  if (!$("fData").value) $("fData").value = hoje();
+
+  let txt = "MANDO lido\n" +
+            "PN etiqueta: " + d.pn + "\n" +
+            "Lote: " + (d.lote || "-") + "\n" +
+            "Quantidade: " + d.quantidade;
+
+  if (p) {
+    txt += "\nCatálogo: " + p.pn + " — " + (p.descricao || "-");
+    if (r.motivo === "multiplo") {
+      msg(txt + "\nAtenção: " + r.candidatos.length + " PNs parecidos. Confirme abaixo.", "aviso");
+      pintarCandidatos(r.candidatos);
+      return;
+    }
+    msg(txt, "ok");
+  } else {
+    txt += "\nCatálogo: PN não encontrado — cadastre no módulo Cadastros.";
+    msg(txt, "aviso");
+  }
+
+  $("fLoteF").focus();
 }
 
-function limparCandidatos() {
-  document.getElementById('cands').innerHTML = '';
-  document.getElementById('busca-msg').textContent = '';
+function aplicarCation(d) {
+  const r = resolverPn(d.pn);
+  const p = r.produto;
+
+  $("fPn").value = p ? p.pn : d.pn;
+  $("fDesc").value = p ? p.descricao : "";
+  $("fQtd").value = d.quantidade;
+  if (!$("fData").value) $("fData").value = hoje();
+
+  let txt = "CATiON lido\n" +
+            "PN etiqueta: " + d.pn + "\n" +
+            "Quantidade: " + d.quantidade +
+            "\nEste código não traz lote — bipe a etiqueta do fornecedor.";
+
+  if (p) {
+    txt += "\nCatálogo: " + p.pn + " — " + (p.descricao || "-");
+    if (r.motivo === "multiplo") {
+      msg(txt + "\nAtenção: " + r.candidatos.length + " PNs parecidos. Confirme abaixo.", "aviso");
+      pintarCandidatos(r.candidatos);
+      return;
+    }
+    msg(txt, "ok");
+  } else {
+    txt += "\nCatálogo: PN não encontrado — cadastre no módulo Cadastros.";
+    msg(txt, "aviso");
+  }
+
+  $("fLoteF").focus();
 }
 
-// ===================== BUSCA NO CATÁLOGO =====================
-function acharCandidatos(termo) {
-  const t = String(termo || '').trim().toUpperCase();
-  if (!t) return { exato: null, cands: [], total: 0 };
+function aplicarFornecedor(d) {
+  $("fLoteF").value = d.lote || "";
+  if (!$("fData").value) $("fData").value = hoje();
 
-  const exato = produtos.find(p => p.pn === t);
-  if (exato) return { exato, cands: [], total: 1 };
+  let txt = "FORNECEDOR lido\n" +
+            "Lote: " + (d.lote || "-") + "\n" +
+            "Fornecedor: " + (d.fornecedor || "?");
 
-  const tl = t.toLowerCase();
+  if ((d.fornecedor || "?") === "?") {
+    txt += "\nDica: cadastre o padrão deste fornecedor em FORMATOS_FORNECEDOR.";
+  }
+
+  msg(txt, "ok");
+
+  if (!$("fPn").value.trim()) $("bipe").focus();
+  else $("fLoteF").focus();
+}
+
+/* =======================================================================
+   BUSCA NO CATÁLOGO
+   ======================================================================= */
+function buscarProduto(termo, limite) {
+  limite = limite || 12;
+  const t = up(termo);
+  if (!t) return { exato: null, candidatos: [] };
+
+  for (let i = 0; i < produtos.length; i++) {
+    if (produtos[i].pn === t) return { exato: produtos[i], candidatos: [] };
+  }
+
+  const low = t.toLowerCase();
   const achados = [];
 
-  produtos.forEach(p => {
-    const pnl = p.pn.toLowerCase();
-    const dcl = (p.descricao || '').toLowerCase();
-    if (pnl.includes(tl)) {
-      achados.push({ pri: pnl.startsWith(tl) ? 0 : 1, p });
-    } else if (dcl.includes(tl)) {
-      achados.push({ pri: 2, p });
-    }
+  produtos.forEach(function (p) {
+    const pn = p.pn.toLowerCase();
+    const ds = (p.descricao || "").toLowerCase();
+    if (pn.indexOf(low) > -1) achados.push({ pri: pn.indexOf(low) === 0 ? 0 : 1, p: p });
+    else if (ds.indexOf(low) > -1) achados.push({ pri: 2, p: p });
   });
 
-  achados.sort((a, b) =>
-    a.pri !== b.pri ? a.pri - b.pri : a.p.pn.localeCompare(b.p.pn));
+  achados.sort(function (a, b) {
+    if (a.pri !== b.pri) return a.pri - b.pri;
+    return a.p.pn.localeCompare(b.p.pn);
+  });
 
   return {
     exato: null,
-    cands: achados.slice(0, 12).map(x => x.p),
-    total: achados.length
+    candidatos: achados.slice(0, limite).map(function (x) { return x.p; })
   };
 }
 
-function detalheExtra(p) {
-  const partes = [];
-  if (p.multiploCaixa) partes.push('cx: ' + p.multiploCaixa);
-  if (p.multiploPallet) partes.push('plt: ' + p.multiploPallet);
-  if (p.codigoFornecedor) partes.push('cod: ' + p.codigoFornecedor);
-  return partes.length
-    ? `<span class="tag">${esc(partes.join(' · '))}</span>`
-    : '';
+function pintarCandidatos(cands) {
+  const box = $("cands");
+  box.innerHTML = "";
+  cands.forEach(function (p) {
+    const div = document.createElement("div");
+    div.className = "cand";
+    div.innerHTML = '<div class="pn"></div><div class="ds"></div>';
+    div.querySelector(".pn").textContent = p.pn;
+    div.querySelector(".ds").textContent = p.descricao || "(sem descrição)";
+    div.addEventListener("click", function () {
+      $("fPn").value = p.pn;
+      $("fDesc").value = p.descricao || "";
+      box.innerHTML = "";
+      $("fBusca").value = "";
+      $("fQtd").focus();
+    });
+    box.appendChild(div);
+  });
 }
 
-function buscarPreview() {
-  const termo = document.getElementById('busca').value.trim();
-  const msg = document.getElementById('busca-msg');
-  const box = document.getElementById('cands');
-  msg.textContent = '';
-  box.innerHTML = '';
+/* =======================================================================
+   RESPONSÁVEIS
+   ======================================================================= */
+function pintarResponsaveis() {
+  const dl = $("listaResp");
+  dl.innerHTML = "";
+  responsaveis.forEach(function (r) {
+    const o = document.createElement("option");
+    o.value = r.nome;
+    dl.appendChild(o);
+  });
+  const salvo = localStorage.getItem("inspecao_resp");
+  if (salvo && !$("fResp").value) $("fResp").value = salvo;
+}
 
-  if (termo.length < 2) return;
+/* =======================================================================
+   TABELA
+   ======================================================================= */
+function pintarLeituras() {
+  const tb = $("corpo");
+  tb.innerHTML = "";
+  $("tagCount").textContent = leituras.length;
 
-  const { exato, cands } = acharCandidatos(termo);
-
-  if (exato) {
-    box.innerHTML = `<div class="cand" onclick="escolherPorPn('${esc(exato.pn)}')">
-      <b>${esc(exato.pn)}</b><br>
-      <span style="color:#5a6b7a">${esc(exato.descricao)}</span>
-      ${detalheExtra(exato)}</div>`;
+  if (!leituras.length) {
+    tb.innerHTML = '<tr><td colspan="8" class="vazio">Nenhuma leitura ainda.</td></tr>';
     return;
   }
 
-  if (!cands.length) {
-    msg.textContent = `Nenhum PN no Cadastro com "${termo}".`;
+  const frag = document.createDocumentFragment();
+
+  leituras.forEach(function (le) {
+    const tr = document.createElement("tr");
+    const cels = [
+      le.part_number || "",
+      le.descricao || "",
+      le.quantidade || "",
+      le.lote_mando || "",
+      le.lote_fornecedor || "",
+      le.data_entrada || "",
+      le.responsavel || ""
+    ];
+
+    cels.forEach(function (v, i) {
+      const td = document.createElement("td");
+      td.textContent = v;
+      if (i === 0) td.className = "mono";
+      if ((i === 3 || i === 4) && v === NA) td.style.color = "#b45309";
+      tr.appendChild(td);
+    });
+
+    const tdX = document.createElement("td");
+    const b = document.createElement("button");
+    b.className = "mini na";
+    b.textContent = "×";
+    b.style.padding = "4px 9px";
+    b.addEventListener("click", function () { excluirLeitura(le); });
+    tdX.appendChild(b);
+    tr.appendChild(tdX);
+
+    frag.appendChild(tr);
+  });
+
+  tb.appendChild(frag);
+}
+
+function excluirLeitura(le) {
+  if (!le._id || !db) return;
+  if (!confirm("Remover esta linha?")) return;
+  db.ref(REF_LEITURAS + "/" + le._id).remove().catch(function (e) {
+    msg("Falha ao excluir: " + e.message, "erro");
+  });
+}
+
+function limparLista() {
+  if (!leituras.length || !db) return;
+  if (!confirm("Remover todas as " + leituras.length +
+               " leituras?\n\nExporte o CSV antes, se precisar guardar.")) return;
+  db.ref(REF_LEITURAS).remove().catch(function (e) {
+    msg("Falha ao limpar: " + e.message, "erro");
+  });
+}
+
+/* =======================================================================
+   ADICIONAR
+   ======================================================================= */
+function adicionar(limparDepois) {
+  if (!db) {
+    msg("Banco não conectado.", "erro");
     return;
   }
 
-  box.innerHTML = cands.map(p =>
-    `<div class="cand" onclick="escolherPorPn('${esc(p.pn)}')">
-      <b>${esc(p.pn)}</b><br>
-      <span style="color:#5a6b7a">${esc(p.descricao)}</span>
-      ${detalheExtra(p)}
-    </div>`).join('');
-}
+  const pn = $("fPn").value.trim();
+  const ds = $("fDesc").value.trim();
 
-function buscar() {
-  const termo = document.getElementById('busca').value.trim();
-  const msg = document.getElementById('busca-msg');
-  const box = document.getElementById('cands');
-  msg.textContent = '';
-  box.innerHTML = '';
-
-  if (!termo) return;
-
-  const { exato, cands, total } = acharCandidatos(termo);
-
-  if (exato) {
-    preencher(exato);
-    document.getElementById('busca').value = '';
-    document.getElementById('f_quantidade').focus();
+  if (!pn && !ds) {
+    msg("Informe ao menos o PART NUMBER ou a DESCRIÇÃO.", "erro");
+    $("bipe").focus();
     return;
   }
 
-  if (cands.length === 1) {
-    preencher(cands[0]);
-    document.getElementById('busca').value = '';
-    document.getElementById('f_quantidade').focus();
-    return;
-  }
-
-  if (!cands.length) {
-    msg.textContent = `Nenhum PN no Cadastro com "${termo}". ` +
-                      `Cadastre no módulo Cadastros.`;
-    return;
-  }
-
-  let extra = '';
-  if (total > cands.length) {
-    extra = ` — mostrando ${cands.length} de ${total}`;
-  }
-
-  box.innerHTML = `<div class="hint" style="margin-bottom:6px">
-    ${cands.length} PN(s) no Cadastro${extra}. Toque para usar:</div>` +
-    cands.map(p =>
-      `<div class="cand" onclick="escolherPorPn('${esc(p.pn)}')">
-        <b>${esc(p.pn)}</b><br>
-        <span style="color:#5a6b7a">${esc(p.descricao)}</span>
-        ${detalheExtra(p)}
-      </div>`).join('');
-}
-
-function escolherPorPn(pn) {
-  const p = produtos.find(x => x.pn === pn);
-  if (!p) return;
-  preencher(p);
-  document.getElementById('busca').value = '';
-  limparCandidatos();
-  document.getElementById('f_quantidade').focus();
-}
-
-function preencher(p) {
-  document.getElementById('f_part_number').value = p.pn || '';
-  document.getElementById('f_descricao').value = p.descricao || '';
-}
-
-// ===================== CATÁLOGO =====================
-function renderCatalogo() {
-  const box = document.getElementById('cat_lista');
-  const cnt = document.getElementById('cat_count');
-  const termo = (document.getElementById('cat_busca').value || '')
-                  .trim().toUpperCase();
-
-  const lista = termo
-    ? produtos.filter(p =>
-        p.pn.includes(termo) || (p.descricao || '').includes(termo))
-    : produtos;
-
-  cnt.textContent = lista.length +
-    (lista.length === 1 ? ' PN' : ' PNs') +
-    (termo ? ' de ' + produtos.length : '');
-
-  if (!lista.length) {
-    box.innerHTML = '<div class="empty">' +
-      (produtos.length ? 'Nenhum PN com esse filtro.'
-                       : 'Catálogo vazio. Cadastre produtos no módulo Cadastros.') +
-      '</div>';
-    return;
-  }
-
-  box.innerHTML = lista.slice(0, 200).map(p => `
-    <div style="border-bottom:1px solid #e5e7eb;padding:10px 0">
-      <b style="color:#002c5f">${esc(p.pn)}</b><br>
-      <span style="font-size:13px;color:#5a6b7a">${esc(p.descricao)}</span>
-      ${p.fornecedor ? `<br><span style="font-size:11px;color:#8a97a5">forn: ${esc(p.fornecedor)}</span>` : ''}
-      ${detalheExtra(p)}
-    </div>`).join('') +
-    (lista.length > 200
-      ? `<div class="hint" style="padding:10px 0">Mostrando 200 de ${lista.length}. Refine a busca.</div>`
-      : '');
-}
-
-// ===================== FORM =====================
-function marcarNA(id) {
-  document.getElementById(id).value = NA;
-}
-
-function marcarHoje() {
-  document.getElementById('f_data_entrada').value = hoje();
-}
-
-function hoje() {
-  const d = new Date();
-  return d.getFullYear() + '-' +
-    String(d.getMonth() + 1).padStart(2, '0') + '-' +
-    String(d.getDate()).padStart(2, '0');
-}
-
-function dadosForm() {
-  return {
-    part_number: document.getElementById('f_part_number').value.trim(),
-    descricao: document.getElementById('f_descricao').value.trim(),
-    quantidade: document.getElementById('f_quantidade').value.trim() || NA,
-    lote_mando: document.getElementById('f_lote_mando').value.trim() || NA,
-    lote_fornecedor: document.getElementById('f_lote_fornecedor').value.trim() || NA,
-    data_entrada: document.getElementById('f_data_entrada').value || hoje(),
-  };
-}
-
-async function adicionar(limparDepois) {
-  const msg = document.getElementById('form-msg');
-  msg.textContent = '';
-
-  const d = dadosForm();
-  const resp = document.getElementById('resp').value.trim();
-
-  if (!d.part_number && !d.descricao) {
-    msg.textContent = 'Informe o PART NUMBER ou a DESCRIÇÃO.';
-    return;
-  }
+  const resp = $("fResp").value.trim();
   if (!resp) {
-    msg.textContent = 'Selecione o responsável.';
+    msg("Informe o responsável pela liberação.", "erro");
+    $("fResp").focus();
     return;
   }
 
-  const reg = Object.assign({}, d, {
+  if (!$("fData").value) $("fData").value = hoje();
+
+  const reg = {
+    part_number: pn,
+    descricao: ds,
+    quantidade: $("fQtd").value.trim() || NA,
+    lote_mando: $("fLoteM").value.trim() || NA,
+    lote_fornecedor: $("fLoteF").value.trim() || NA,
+    data_entrada: $("fData").value,
     responsavel: resp,
     criado: Date.now(),
     origem: ORIGEM
+  };
+
+  db.ref(REF_LEITURAS).push(reg).then(function () {
+    localStorage.setItem("inspecao_resp", resp);
+    msg("Linha adicionada.", "ok");
+    if (limparDepois) limparCampos();
+  }).catch(function (e) {
+    msg("Não foi possível salvar.\n" + e.message, "erro");
   });
-
-  try {
-    await db.ref(REF_LEITURAS).push(reg);
-    msg.className = 'ok';
-    msg.textContent = 'Linha adicionada.';
-    setTimeout(() => msg.textContent = '', 1800);
-    if (limparDepois) limparForm();
-  } catch (e) {
-    msg.className = 'err';
-    msg.textContent = 'Falha ao salvar: ' + e.message;
-  }
 }
 
-function adicionarLimpar() {
-  adicionar(true);
-}
-
-function limparForm() {
-  ['f_part_number', 'f_descricao', 'f_quantidade',
-   'f_lote_mando', 'f_lote_fornecedor'].forEach(id => {
-    document.getElementById(id).value = '';
+function limparCampos() {
+  ["fPn", "fDesc", "fQtd", "fLoteM", "fLoteF"].forEach(function (id) {
+    $(id).value = "";
   });
-  document.getElementById('f_data_entrada').value = hoje();
-  setBipMsg('');
-  limparCandidatos();
-  document.getElementById('busca').focus();
+  $("fData").value = hoje();
+  $("fBusca").value = "";
+  $("cands").innerHTML = "";
+  msgOff();
+  $("bipe").focus();
 }
 
-// ===================== TABELA =====================
-function renderTabela() {
-  const tb = document.querySelector('#tabela tbody');
-  const vazio = document.getElementById('vazio');
-
-  tb.innerHTML = leituras.map(l => {
-    const cls = [l.quantidade, l.lote_mando, l.lote_fornecedor]
-      .some(v => String(v).toUpperCase() === NA) ? ' class="na"' : '';
-    return `<tr${cls}>
-      <td>${esc(l.part_number || '')}</td>
-      <td>${esc((l.descricao || '').substring(0, 30))}</td>
-      <td>${esc(l.quantidade || '')}</td>
-      <td>${esc(l.lote_mando || '')}</td>
-      <td>${esc(l.lote_fornecedor || '')}</td>
-      <td>${esc(l.data_entrada || '')}</td>
-      <td>${esc((l.responsavel || '').substring(0, 14))}</td>
-      <td style="color:#b91c1c;cursor:pointer"
-          onclick="excluirLinha('${l._id}')">✕</td>
-    </tr>`;
-  }).join('');
-
-  vazio.style.display = leituras.length ? 'none' : 'block';
-
-  document.getElementById('cnt').textContent =
-    leituras.length + ' linha' + (leituras.length === 1 ? '' : 's');
-  document.getElementById('badge').textContent = leituras.length;
-
-  const pns = new Set(leituras.map(l => l.part_number).filter(Boolean));
-  document.getElementById('cnt-pn').textContent =
-    pns.size ? pns.size + ' PNs' : '';
-}
-
-async function excluirLinha(id) {
-  if (!confirm('Remover esta linha?')) return;
-  try {
-    await db.ref(`${REF_LEITURAS}/${id}`).remove();
-  } catch (e) {
-    alert('Erro: ' + e.message);
-  }
-}
-
-async function limparTudo() {
-  if (!leituras.length) return;
-  if (!confirm(`Remover todas as ${leituras.length} linhas?\n` +
-               'Gere o Excel antes, se precisar guardar.')) return;
-  try {
-    await db.ref(REF_LEITURAS).remove();
-  } catch (e) {
-    alert('Erro: ' + e.message);
-  }
-}
-
-// ===================== EXCEL =====================
-function exportar() {
+/* =======================================================================
+   CSV
+   ======================================================================= */
+function exportarCsv() {
   if (!leituras.length) {
-    alert('Nenhuma linha para exportar.');
+    msg("Nenhuma linha para exportar.", "aviso");
     return;
   }
 
-  const dados = leituras.map(l => ([
-    l.part_number || '',
-    l.descricao || '',
-    l.quantidade || '',
-    l.lote_mando || '',
-    l.lote_fornecedor || '',
-    l.data_entrada || '',
-    l.responsavel || ''
-  ]));
+  const cab = ["PART NUMBER", "DESCRIÇÃO", "QUANTIDADE", "LOTE MANDO",
+               "LOTE FORNECEDOR", "DATA DE ENTRADA", "RESPONSÁVEL"];
+  const linhas = [cab.join(";")];
 
-  const cab = [[
-    'PART NUMBER', 'DESCRIÇÃO', 'QUANTIDADE', 'LOTE MANDO',
-    'LOTE FORNECEDOR', 'DATA DE ENTRADA', 'RESPONSÁVEL'
-  ]];
-
-  const ws = XLSX.utils.aoa_to_sheet(cab.concat(dados));
-  ws['!cols'] = [
-    { wch: 24 }, { wch: 40 }, { wch: 12 }, { wch: 20 },
-    { wch: 22 }, { wch: 16 }, { wch: 22 }
-  ];
-
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Inspecao');
-
-  const nome = 'Inspecao_' + hoje() + '.xlsx';
-  XLSX.writeFile(wb, nome);
-}
-
-// ===================== ABAS =====================
-function mudarAba(nome) {
-  ['leitura', 'linhas', 'catalogo'].forEach(n => {
-    document.getElementById('tab-' + n).classList.toggle(
-      'active', n === nome);
-    const b = document.getElementById('tabbtn-' + n);
-    b.classList.toggle('btn-ghost', n !== nome);
-    b.classList.toggle('btn-teal', n === nome);
+  leituras.forEach(function (le) {
+    const l = [le.part_number, le.descricao, le.quantidade, le.lote_mando,
+               le.lote_fornecedor, le.data_entrada, le.responsavel];
+    linhas.push(l.map(function (v) {
+      return '"' + String(v == null ? "" : v).replace(/"/g, '""') + '"';
+    }).join(";"));
   });
-  if (nome === 'catalogo') renderCatalogo();
+
+  const blob = new Blob(["\ufeff" + linhas.join("\r\n")], { type: "text/csv;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "Inspecao_" + hoje() + ".csv";
+  a.click();
+  setTimeout(function () { URL.revokeObjectURL(a.href); }, 4000);
 }
 
-// ===================== UTIL =====================
-function esc(t) {
-  return String(t == null ? '' : t)
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+/* =======================================================================
+   CÂMERA
+   ======================================================================= */
+let cam = null;
+let camOn = false;
+
+async function alternarCamera() {
+  const btn = $("btnCamera");
+  const box = $("reader");
+
+  if (camOn) {
+    try { await cam.stop(); await cam.clear(); } catch (e) {}
+    camOn = false;
+    cam = null;
+    box.className = "";
+    btn.textContent = "Câmera";
+    $("bipe").focus();
+    return;
+  }
+
+  if (typeof Html5Qrcode === "undefined") {
+    msg("Biblioteca de leitura não carregou.\nVerifique a internet e recarregue.", "erro");
+    return;
+  }
+
+  box.className = "on";
+  btn.textContent = "Parar";
+
+  const formatos = [];
+  try {
+    formatos.push(Html5QrcodeSupportedFormats.CODE_128);
+    formatos.push(Html5QrcodeSupportedFormats.QR_CODE);
+    formatos.push(Html5QrcodeSupportedFormats.DATA_MATRIX);
+    formatos.push(Html5QrcodeSupportedFormats.CODE_39);
+    formatos.push(Html5QrcodeSupportedFormats.ITF);
+  } catch (e) {}
+
+  cam = new Html5Qrcode("reader", {
+    formatsToSupport: formatos.length ? formatos : undefined,
+    verbose: false
+  });
+
+  try {
+    await cam.start(
+      { facingMode: "environment" },
+      { fps: 10, qrbox: { width: 280, height: 170 } },
+      function (texto) { processarEtiqueta(texto); },
+      function () {}
+    );
+    camOn = true;
+  } catch (e) {
+    box.className = "";
+    btn.textContent = "Câmera";
+    cam = null;
+    msg("Não foi possível abrir a câmera.\n" + e.message, "erro");
+  }
 }
 
-// ===================== INIT =====================
-document.addEventListener('DOMContentLoaded', () => {
-  document.getElementById('f_data_entrada').value = hoje();
+/* =======================================================================
+   EVENTOS
+   ======================================================================= */
+function ligarEventos() {
+
+  $("bipe").addEventListener("keydown", function (e) {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    const t = $("bipe").value.trim();
+    $("bipe").value = "";
+    if (t) processarEtiqueta(t);
+  });
+
+  $("btnColar").addEventListener("click", function () {
+    const t = prompt("Cole o código da etiqueta:");
+    if (t && t.trim()) processarEtiqueta(t.trim());
+  });
+
+  $("btnCamera").addEventListener("click", alternarCamera);
+
+  $("fBusca").addEventListener("input", function () {
+    const t = $("fBusca").value.trim();
+    if (t.length < 2) { $("cands").innerHTML = ""; return; }
+
+    const r = buscarProduto(t);
+    if (r.exato) {
+      $("cands").innerHTML = "";
+      $("fPn").value = r.exato.pn;
+      $("fDesc").value = r.exato.descricao || "";
+      return;
+    }
+    pintarCandidatos(r.candidatos);
+  });
+
+  $("fBusca").addEventListener("keydown", function (e) {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    const r = buscarProduto($("fBusca").value.trim());
+    if (r.exato) {
+      $("fPn").value = r.exato.pn;
+      $("fDesc").value = r.exato.descricao || "";
+    } else if (r.candidatos.length === 1) {
+      $("fPn").value = r.candidatos[0].pn;
+      $("fDesc").value = r.candidatos[0].descricao || "";
+    } else {
+      return;
+    }
+    $("fBusca").value = "";
+    $("cands").innerHTML = "";
+    $("fQtd").focus();
+  });
+
+  document.querySelectorAll("[data-na]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      $(b.getAttribute("data-na")).value = NA;
+    });
+  });
+
+  document.querySelectorAll("[data-hoje]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      $(b.getAttribute("data-hoje")).value = hoje();
+    });
+  });
+
+  $("btnResp").addEventListener("click", function () {
+    const nome = prompt("Nome do responsável:");
+    if (!nome || !nome.trim()) return;
+    const n = nome.trim();
+    const chave = n.toUpperCase().replace(/\s+/g, "_");
+    if (!db) { msg("Banco não conectado.", "erro"); return; }
+    db.ref(REF_RESPONS + "/" + chave).set({ nome: n }).then(function () {
+      $("fResp").value = n;
+      msg("Responsável \"" + n + "\" cadastrado.", "ok");
+    }).catch(function (e) {
+      msg("Falha ao cadastrar responsável: " + e.message, "erro");
+    });
+  });
+
+  $("fResp").addEventListener("change", function () {
+    if ($("fResp").value.trim()) {
+      localStorage.setItem("inspecao_resp", $("fResp").value.trim());
+    }
+  });
+
+  $("btnAdd").addEventListener("click", function () { adicionar(false); });
+  $("btnAddLimpar").addEventListener("click", function () { adicionar(true); });
+  $("btnCsv").addEventListener("click", exportarCsv);
+  $("btnLimpar").addEventListener("click", limparLista);
+}
+
+/* =======================================================================
+   INÍCIO
+   ======================================================================= */
+document.addEventListener("DOMContentLoaded", function () {
+  ligarEventos();
+  $("fData").value = hoje();
   conectar();
-  mudarAba('leitura');
+  $("bipe").focus();
 });
 </script>
 </body>
 </html>
-
 
 
