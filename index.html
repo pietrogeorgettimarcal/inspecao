@@ -10,7 +10,7 @@
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.20.0/umd/index.min.js"></script>
 
 <style>
 :root{
@@ -79,6 +79,7 @@ input:focus,select:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(0,17
 }
 .mini.na{background:var(--aviso);color:#fff}
 .mini.azul{background:var(--azul);color:#fff}
+.mini.ghost{background:#fff;color:var(--azul);border:1px solid var(--linha)}
 
 .btn{
   width:100%;border:0;border-radius:10px;padding:15px;font-size:14px;
@@ -89,27 +90,55 @@ input:focus,select:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(0,17
 .btn-sec{background:var(--teal);color:#fff}
 .btn-ter{background:#fff;color:var(--azul);border:1px solid var(--linha)}
 .btn-x{background:#fff;color:var(--erro);border:1px solid #f3c7c7}
+.btn-cam{background:var(--azul);color:#fff}
+.btn-cam.on{background:var(--erro)}
 
-/* ===== câmera — mesmo esquema do pesagem.html ===== */
-#qr-reader{
-  display:none;
-  width:100%;
-  border-radius:12px;
-  overflow:hidden;
-  background:#000;
-  margin-top:10px;
+/* ================= câmera ================= */
+#cam-panel{display:none;margin-top:10px}
+#cam-panel.on{display:block}
+
+#cam-wrap{
+  position:relative;width:100%;height:46vh;min-height:250px;max-height:430px;
+  background:#000;border-radius:12px;overflow:hidden;
 }
-#qr-reader.on{display:block}
-#qr-reader video{
-  width:100% !important;
-  border-radius:12px;
+#cam-video{
+  width:100%;height:100%;object-fit:cover;display:block;background:#000;
 }
-#qr-reader img{display:none !important}
-#qr-reader__dashboard_section_csr{padding:0 !important;border:0 !important}
-#qr-reader__dashboard_section_fsr{display:none !important}
-#qr-reader__camera_permission_button,
-#qr-reader__file_scan_button{display:none !important}
-#qr-reader__header_message,#qr-reader__status_span{display:none !important}
+#cam-guide{
+  position:absolute;left:4%;right:4%;top:50%;
+  height:26%;transform:translateY(-50%);
+  border:2px solid rgba(0,178,169,.95);
+  border-radius:6px;
+  box-shadow:0 0 0 9999px rgba(0,0,0,.30);
+  pointer-events:none;
+}
+#cam-guide::after{
+  content:"enquadre o código aqui";
+  position:absolute;left:0;bottom:100%;margin-bottom:4px;
+  font-size:10px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;
+  color:#00b2a9;white-space:nowrap;
+}
+#cam-hint{
+  position:absolute;left:0;right:0;bottom:0;
+  padding:6px 10px;font-size:10.5px;font-weight:700;
+  color:#fff;background:rgba(0,0,0,.55);
+  text-align:center;
+}
+#cam-tools{
+  display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;
+}
+#cam-tools button{
+  flex:1;min-width:80px;border:1px solid var(--linha);border-radius:8px;
+  background:#fff;color:var(--azul);font-size:11px;font-weight:800;
+  letter-spacing:.3px;padding:10px 6px;cursor:pointer;font-family:inherit;
+}
+#cam-tools button:disabled{opacity:.4}
+#cam-tools button.ativo{background:var(--teal);color:#fff;border-color:var(--teal)}
+
+#zoom-row{display:none;align-items:center;gap:8px;margin-top:8px}
+#zoom-row.on{display:flex}
+#zoom-row span{font-size:10px;font-weight:800;color:var(--muted);letter-spacing:.4px}
+#zoom{flex:1;padding:0;border:0;background:transparent}
 
 .msg{
   margin-top:10px;font-size:12.5px;line-height:1.55;white-space:pre-wrap;
@@ -154,9 +183,6 @@ td.mono{font-size:11.5px;font-weight:700}
   padding:2px 7px;border-radius:20px;background:#e2e8f0;color:#334155;
   margin-left:6px;vertical-align:middle;
 }
-.tag.cation{background:#dbeafe;color:#1e40af}
-.tag.mando{background:#dcfce7;color:#166534}
-.tag.forn{background:#fef3c7;color:#92400e}
 </style>
 </head>
 
@@ -172,7 +198,7 @@ td.mono{font-size:11.5px;font-weight:700}
 
 <main>
 
-  <!-- ================= LEITURA ================= -->
+  <!-- ============ LEITURA ============ -->
   <section class="card">
     <h2>Bipe ou escaneie a etiqueta</h2>
     <p class="dica">
@@ -200,13 +226,31 @@ td.mono{font-size:11.5px;font-weight:700}
           <option value="fornecedor">Fornecedor</option>
         </select>
       </div>
-      <button class="btn" id="btnCamera" type="button"
-              style="width:auto;padding:13px 18px;font-size:12px;background:var(--azul);color:#fff">
-        Câmera
-      </button>
+      <button class="btn btn-cam" id="btnCamera" type="button"
+              style="width:auto;padding:13px 18px;font-size:12px">Câmera</button>
     </div>
 
-    <div id="qr-reader"></div>
+    <!-- painel da câmera -->
+    <div id="cam-panel">
+      <div id="cam-wrap">
+        <video id="cam-video" playsinline muted autoplay></video>
+        <div id="cam-guide"></div>
+        <div id="cam-hint">Aproxime até o código preencher a faixa</div>
+      </div>
+
+      <div id="cam-tools">
+        <button type="button" id="btnZoomMenos">Zoom −</button>
+        <button type="button" id="btnZoomMais">Zoom +</button>
+        <button type="button" id="btnTorch">Lanterna</button>
+        <button type="button" id="btnFecharCam">Fechar</button>
+      </div>
+
+      <div id="zoom-row">
+        <span>ZOOM</span>
+        <input type="range" id="zoom" min="1" max="1" step="0.1" value="1">
+        <span id="zoom-val">1×</span>
+      </div>
+    </div>
 
     <button class="btn btn-ter" id="btnDigitar" type="button"
             style="margin-top:10px;font-size:12px">Digitar código</button>
@@ -214,7 +258,7 @@ td.mono{font-size:11.5px;font-weight:700}
     <div class="msg" id="msg"></div>
   </section>
 
-  <!-- ================= DADOS ================= -->
+  <!-- ============ DADOS ============ -->
   <section class="card">
     <h2>Dados da leitura</h2>
 
@@ -266,7 +310,7 @@ td.mono{font-size:11.5px;font-weight:700}
     <datalist id="listaResp"></datalist>
   </section>
 
-  <!-- ================= LISTA ================= -->
+  <!-- ============ LISTA ============ -->
   <section class="card">
     <h2>Leituras <span class="tag" id="tagCount">0</span></h2>
     <div class="tab-wrap">
@@ -445,8 +489,7 @@ function detectarTipo(bruto) {
 }
 
 /* ---------- 1) MANDO ----------
-   P00000000000000BH9003Z10000000000VKRA000600
-   P + zeros + PN + zeros + LOTE + zeros + QTD             */
+   P00000000000000BH9003Z10000000000VKRA000600              */
 function parseMando(bruto) {
   const t = soAlnum(bruto);
   if (!t) return null;
@@ -475,7 +518,7 @@ function parseMando(bruto) {
 
 /* ---------- 2) CATiON ----------
    0000000280_0000000BC410B4200.a2
-   [zeros]QUANTIDADE _ [zeros]PART NUMBER   (sem lote)     */
+   [zeros]QUANTIDADE _ [zeros]PART NUMBER  (sem lote)       */
 function parseCation(bruto) {
   const t = String(bruto == null ? "" : bruto).trim().toUpperCase();
   const i = t.indexOf("_");
@@ -487,7 +530,7 @@ function parseCation(bruto) {
   const qtd = parseInt(qtdTxt, 10);
   if (!qtd || qtd <= 0) return null;
 
-  /* mantém letras, números, ponto, hífen e barra; remove só os zeros à esquerda */
+  /* preserva ponto, hífen e barra; remove só os zeros à esquerda */
   let pn = t.slice(i + 1).replace(/_/g, "").replace(/[^A-Z0-9.\-\/]/g, "");
   pn = pn.replace(/^0+/, "").trim();
   if (!pn) return null;
@@ -502,7 +545,7 @@ function parseCation(bruto) {
 }
 
 /* ---------- 3) FORNECEDOR ----------
-   prid889595 · 889595 · "DASOL 889595 2026-11-12"           */
+   prid889595 · 889595 · "DASOL 889595 2026-11-12"          */
 const FORMATOS_FORNECEDOR = {
   DASOL:  [/PRID[^A-Z0-9]*([A-Z0-9]{3,20})/],
   CATION: [/PRID[^A-Z0-9]*([A-Z0-9]{3,20})/]
@@ -546,34 +589,56 @@ function parseFornecedor(bruto) {
 }
 
 /* =======================================================================
-   RESOLVER PN NO CATÁLOGO DO CADASTRO
+   RESOLVER PN NO CATÁLOGO — com variantes para leitura imperfeita
    ======================================================================= */
+function variantesPn(alvo) {
+  const v = [alvo];
+
+  /* ruído no fim: tenta cortar 1 e 2 caracteres finais */
+  if (alvo.length > 6) v.push(alvo.slice(0, -1));
+  if (alvo.length > 7) v.push(alvo.slice(0, -2));
+
+  /* zeros de preenchimento à direita */
+  const semZeros = alvo.replace(/0+$/, "");
+  if (semZeros && semZeros !== alvo && semZeros.length >= 5) v.push(semZeros);
+
+  /* remove ruído que não seja A-Z0-9 no fim já resolvido por soAlnum */
+  return v.filter(function (x, i) { return x && v.indexOf(x) === i; });
+}
+
 function resolverPn(pnBruto) {
-  const alvo = soAlnum(pnBruto);
-  if (!alvo) return { produto: null, motivo: "vazio", candidatos: [] };
+  const bruto = soAlnum(pnBruto);
+  if (!bruto) return { produto: null, motivo: "vazio", candidatos: [] };
 
-  const exatos = [], prefixos = [], parciais = [];
+  const alvos = variantesPn(bruto);
 
-  produtos.forEach(function (p) {
-    const n = soAlnum(p.pn);
-    if (!n) return;
-    if (n === alvo) exatos.push(p);
-    else if (n.indexOf(alvo) === 0) prefixos.push(p);
-    else if (n.indexOf(alvo) > -1 || alvo.indexOf(n) > -1) parciais.push(p);
-  });
+  for (let a = 0; a < alvos.length; a++) {
+    const alvo = alvos[a];
+    const exatos = [], prefixos = [], parciais = [];
 
-  const porTam = function (a, b) { return a.pn.length - b.pn.length; };
+    produtos.forEach(function (p) {
+      const n = soAlnum(p.pn);
+      if (!n) return;
+      if (n === alvo) exatos.push(p);
+      else if (n.indexOf(alvo) === 0) prefixos.push(p);
+      else if (alvo.length >= 5 && (n.indexOf(alvo) > -1 || alvo.indexOf(n) > -1)) {
+        parciais.push(p);
+      }
+    });
 
-  if (exatos.length === 1) return { produto: exatos[0], motivo: "exato", candidatos: [] };
-  if (prefixos.length === 1) return { produto: prefixos[0], motivo: "prefixo", candidatos: [] };
-  if (prefixos.length > 1) {
-    prefixos.sort(porTam);
-    return { produto: prefixos[0], motivo: "multiplo", candidatos: prefixos.slice(0, 6) };
-  }
-  if (parciais.length === 1) return { produto: parciais[0], motivo: "contem", candidatos: [] };
-  if (parciais.length > 1) {
-    parciais.sort(porTam);
-    return { produto: parciais[0], motivo: "multiplo", candidatos: parciais.slice(0, 6) };
+    const porTam = function (x, y) { return x.pn.length - y.pn.length; };
+
+    if (exatos.length === 1) return { produto: exatos[0], motivo: "exato", candidatos: [] };
+    if (prefixos.length === 1) return { produto: prefixos[0], motivo: "prefixo", candidatos: [] };
+    if (prefixos.length > 1) {
+      prefixos.sort(porTam);
+      return { produto: prefixos[0], motivo: "multiplo", candidatos: prefixos.slice(0, 6) };
+    }
+    if (parciais.length === 1) return { produto: parciais[0], motivo: "contem", candidatos: [] };
+    if (parciais.length > 1) {
+      parciais.sort(porTam);
+      return { produto: parciais[0], motivo: "multiplo", candidatos: parciais.slice(0, 6) };
+    }
   }
 
   return { produto: null, motivo: "nenhum", candidatos: [] };
@@ -583,7 +648,10 @@ function resolverPn(pnBruto) {
    PROCESSAMENTO DA ETIQUETA
    ======================================================================= */
 function processarEtiqueta(texto) {
-  const bruto = String(texto == null ? "" : texto).replace(/[\x00-\x1F\x7F]/g, "").trim();
+  const bruto = String(texto == null ? "" : texto)
+    .replace(/[\x00-\x1F\x7F]/g, "")
+    .trim();
+
   if (!bruto) return;
 
   const modo = $("modo").value;
@@ -927,93 +995,399 @@ function exportarCsv() {
 }
 
 /* =======================================================================
-   CÂMERA — mesmo padrão do pesagem.html (iPhone e Android)
+   LEITOR DE CÓDIGO — ZXing em canvas, faixa central, escala 2x
+   Feito para Code 128 baixo/fino e impressão fraca.
    ======================================================================= */
-let html5Qr = null;
-let cameraRodando = false;
+const CAM = {
+  stream: null,
+  video: null,
+  track: null,
+  caps: null,
+  ligada: false,
+  loopId: null,
+  leitor: null,
+  canvas: null,
+  ctx: null,
+  zoom: 1,
+  ultimoCodigo: "",
+  ultimoTs: 0,
+  inicio: 0
+};
 
-function pararCamera() {
-  const box = $("qr-reader");
-  const btn = $("btnCamera");
-
-  if (html5Qr) {
-    const inst = html5Qr;
-    html5Qr = null;
-    try {
-      if (cameraRodando) {
-        inst.stop().then(function () {
-          try { inst.clear(); } catch (e) {}
-        }).catch(function () {});
-      } else {
-        try { inst.clear(); } catch (e) {}
-      }
-    } catch (e) {}
-  }
-
-  cameraRodando = false;
-  if (box) box.className = "";
-  if (btn) btn.textContent = "Câmera";
+function libZXingPronta() {
+  return typeof window.ZXing !== "undefined" && !!window.ZXing.MultiFormatReader;
 }
 
-function abrirCamera() {
-  const box = $("qr-reader");
-  const btn = $("btnCamera");
+function criarLeitorZXing() {
+  if (CAM.leitor) return CAM.leitor;
+  const ZX = window.ZXing;
+  const F = ZX.BarcodeFormat;
 
-  if (cameraRodando) { pararCamera(); return; }
+  const hints = new Map();
+  hints.set(ZX.DecodeHintType.POSSIBLE_FORMATS, [
+    F.CODE_128, F.CODE_39, F.CODE_93, F.ITF, F.CODABAR,
+    F.QR_CODE, F.DATA_MATRIX, F.EAN_13, F.EAN_8, F.PDF_417
+  ]);
+  hints.set(ZX.DecodeHintType.TRY_HARDER, true);
 
-  if (typeof Html5Qrcode === "undefined") {
-    msg("Biblioteca de leitura não carregou.\nVerifique a internet e recarregue a página.", "erro");
+  CAM.leitor = new ZX.MultiFormatReader();
+  CAM.leitor.setHints(hints);
+  return CAM.leitor;
+}
+
+/* realce: grayscale + contraste (percentil) ou Otsu */
+function realcar(ctx, w, h, modo) {
+  const img = ctx.getImageData(0, 0, w, h);
+  const d = img.data;
+  const n = w * h;
+  const gray = new Uint8ClampedArray(n);
+
+  for (let i = 0, j = 0; i < d.length; i += 4, j++) {
+    gray[j] = (d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114) | 0;
+  }
+
+  const hist = new Uint32Array(256);
+  for (let i = 0; i < n; i++) hist[gray[i]]++;
+
+  if (modo === "otsu") {
+    let soma = 0;
+    for (let v = 0; v < 256; v++) soma += v * hist[v];
+    let somaB = 0, pesoB = 0, maior = -1, limiar = 127;
+
+    for (let v = 0; v < 256; v++) {
+      pesoB += hist[v];
+      if (!pesoB) continue;
+      const pesoF = n - pesoB;
+      if (!pesoF) break;
+      somaB += v * hist[v];
+      const mediaB = somaB / pesoB;
+      const mediaF = (soma - somaB) / pesoF;
+      const entre = pesoB * pesoF * (mediaB - mediaF) * (mediaB - mediaF);
+      if (entre > maior) { maior = entre; limiar = v; }
+    }
+
+    for (let i = 0; i < n; i++) {
+      const v = gray[i] <= limiar ? 0 : 255;
+      const p = i * 4;
+      d[p] = d[p + 1] = d[p + 2] = v;
+      d[p + 3] = 255;
+    }
+  } else {
+    let lo = 0, hi = 255, acc = 0;
+    const alvoBaixo = n * 0.02, alvoAlto = n * 0.98;
+
+    for (let v = 0; v < 256; v++) {
+      acc += hist[v];
+      if (acc >= alvoBaixo) { lo = v; break; }
+    }
+    acc = 0;
+    for (let v = 0; v < 256; v++) {
+      acc += hist[v];
+      if (acc >= alvoAlto) { hi = v; break; }
+    }
+    if (hi <= lo) { lo = 0; hi = 255; }
+
+    const faixa = (hi - lo) || 1;
+    for (let i = 0; i < n; i++) {
+      let v = (gray[i] - lo) * 255 / faixa;
+      v = v < 0 ? 0 : (v > 255 ? 255 : v);
+      const p = i * 4;
+      d[p] = d[p + 1] = d[p + 2] = v;
+      d[p + 3] = 255;
+    }
+  }
+
+  ctx.putImageData(img, 0, 0);
+}
+
+function decodificarCanvas(canvas, ctx, w, h) {
+  const ZX = window.ZXing;
+  const leitor = criarLeitorZXing();
+
+  const binarizadores = [ZX.HybridBinarizer, ZX.GlobalHistogramBinarizer];
+
+  for (let m = 0; m < 2; m++) {
+    realcar(ctx, w, h, m === 0 ? "stretch" : "otsu");
+
+    for (let b = 0; b < binarizadores.length; b++) {
+      try {
+        const fonte = new ZX.HTMLCanvasElementLuminanceSource(canvas);
+        const bitmap = new ZX.BinaryBitmap(new binarizadores[b](fonte));
+        const res = leitor.decode(bitmap);
+        if (res && res.getText) {
+          const txt = String(res.getText()).trim();
+          if (txt) return txt;
+        }
+      } catch (e) {
+        /* NotFoundException é o esperado: segue tentando */
+      }
+    }
+  }
+  return null;
+}
+
+/* recorta a faixa central, amplia e tenta decodificar */
+function tentarLer() {
+  const v = CAM.video;
+  if (!v || !v.videoWidth) return null;
+
+  const vw = v.videoWidth;
+  const vh = v.videoHeight;
+
+  /* faixa central: altura ~30% — casa com etiqueta larga e baixa */
+  const bandH = Math.round(vh * 0.30);
+  const bandY = Math.round((vh - bandH) / 2);
+
+  /* escala 1: largura até 1500 px  |  escala 2: amplia 2x (máx 2600 px) */
+  const passadas = [
+    { esc: 1, maxW: 1500 },
+    { esc: 2, maxW: 2600 }
+  ];
+
+  for (let i = 0; i < passadas.length; i++) {
+    const cfg = passadas[i];
+    let cw = Math.round(vw * cfg.esc);
+    let ch = Math.round(bandH * cfg.esc);
+
+    if (cw > cfg.maxW) {
+      const f = cfg.maxW / cw;
+      cw = Math.round(cw * f);
+      ch = Math.round(ch * f);
+    }
+    if (cw < 200 || ch < 60) continue;
+
+    const canvas = CAM.canvas;
+    canvas.width = cw;
+    canvas.height = ch;
+
+    const ctx = CAM.ctx;
+    ctx.imageSmoothingEnabled = false;
+    ctx.clearRect(0, 0, cw, ch);
+    ctx.drawImage(v, 0, bandY, vw, bandH, 0, 0, cw, ch);
+
+    const txt = decodificarCanvas(canvas, ctx, cw, ch);
+    if (txt) return txt;
+  }
+
+  /* última tentativa: quadro inteiro, escala 1 */
+  let cw = Math.min(vw, 1400);
+  let ch = Math.round(vh * cw / vw);
+  if (cw >= 200 && ch >= 200) {
+    CAM.canvas.width = cw;
+    CAM.canvas.height = ch;
+    const ctx = CAM.ctx;
+    ctx.imageSmoothingEnabled = true;
+    ctx.clearRect(0, 0, cw, ch);
+    ctx.drawImage(v, 0, 0, vw, vh, 0, 0, cw, ch);
+    const txt = decodificarCanvas(CAM.canvas, ctx, cw, ch);
+    if (txt) return txt;
+  }
+
+  return null;
+}
+
+function cicloLeitura() {
+  if (!CAM.ligada) return;
+
+  const txt = tentarLer();
+
+  if (txt) {
+    const agora = Date.now();
+    const repetido = (txt === CAM.ultimoCodigo) && (agora - CAM.ultimoTs < 2500);
+
+    if (!repetido) {
+      CAM.ultimoCodigo = txt;
+      CAM.ultimoTs = agora;
+      fecharCamera();
+      msg("Código lido: " + txt, "ok");
+      processarEtiqueta(txt);
+      return;
+    }
+  } else {
+    const seg = Math.round((Date.now() - CAM.inicio) / 1000);
+    if (seg === 12) {
+      const h = $("cam-hint");
+      if (h) h.textContent = "Aproxime mais · apoie o celular · use Lanterna";
+    }
+  }
+
+  CAM.loopId = setTimeout(cicloLeitura, 260);
+}
+
+async function abrirCamera() {
+  if (CAM.ligada) { fecharCamera(); return; }
+
+  if (!libZXingPronta()) {
+    msg("Leitor não carregou. Verifique a internet e recarregue a página.", "erro");
+    return;
+  }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    msg("Este navegador não libera a câmera.\nA página precisa estar em HTTPS.", "erro");
     return;
   }
 
-  box.innerHTML = "";
-  box.className = "on";
+  const panel = $("cam-panel");
+  const btn = $("btnCamera");
+
+  CAM.video = $("cam-video");
+  CAM.canvas = document.createElement("canvas");
+  CAM.ctx = CAM.canvas.getContext("2d", { willReadFrequently: true });
+
+  panel.className = "on";
   btn.textContent = "Parar";
+  btn.classList.add("on");
   msg("Abrindo a câmera...", "aviso");
 
-  const formatos = [];
-  try {
-    const F = Html5QrcodeSupportedFormats;
-    formatos.push(F.QR_CODE);
-    formatos.push(F.DATA_MATRIX);
-    formatos.push(F.CODE_128);
-    formatos.push(F.CODE_39);
-    formatos.push(F.CODE_93);
-    formatos.push(F.ITF);
-  } catch (e) {}
-
-  const config = {
-    fps: 10,
-    qrbox: { width: 240, height: 240 },
-    showTorchButtonIfSupported: true
-  };
-  if (formatos.length) config.formatsToSupport = formatos;
-
-  html5Qr = new Html5Qrcode("qr-reader");
-
-  /* start() direto no clique, sem await antes: preserva o gesto no iOS */
-  html5Qr.start(
-    { facingMode: "environment" },
-    config,
-    function (texto) {
-      pararCamera();
-      msg("Código lido!", "ok");
-      processarEtiqueta(texto);
+  const tentativas = [
+    {
+      video: {
+        facingMode: { ideal: "environment" },
+        width:  { ideal: 1920 },
+        height: { ideal: 1080 },
+        advanced: [{ focusMode: "continuous" }]
+      },
+      audio: false
     },
-    function () { /* "não encontrado" entre frames é normal */ }
-  ).then(function () {
-    cameraRodando = true;
-    msg("Aponte para o QR Code ou código de barras da etiqueta.", "ok");
-  }).catch(function (e) {
-    cameraRodando = false;
-    box.className = "";
+    {
+      video: {
+        facingMode: "environment",
+        width:  { ideal: 1280 },
+        height: { ideal: 720 }
+      },
+      audio: false
+    },
+    { video: { facingMode: "environment" }, audio: false }
+  ];
+
+  let erro = null;
+
+  for (let i = 0; i < tentativas.length; i++) {
+    try {
+      CAM.stream = await navigator.mediaDevices.getUserMedia(tentativas[i]);
+      erro = null;
+      break;
+    } catch (e) {
+      erro = e;
+      CAM.stream = null;
+    }
+  }
+
+  if (!CAM.stream) {
+    panel.className = "";
     btn.textContent = "Câmera";
-    msg("Não foi possível abrir a câmera.\n" + (e && e.message ? e.message : e) +
-        "\n\nVerifique a permissão de câmera do navegador. " +
-        "A página precisa estar em HTTPS.", "erro");
-    try { if (html5Qr) html5Qr.clear(); } catch (_) {}
-    html5Qr = null;
-  });
+    btn.classList.remove("on");
+    msg("Não foi possível abrir a câmera.\n" +
+        (erro && erro.message ? erro.message : "permissão negada") +
+        "\n\nVerifique a permissão de câmera do navegador.", "erro");
+    return;
+  }
+
+  CAM.video.srcObject = CAM.stream;
+  CAM.video.muted = true;
+  CAM.video.setAttribute("playsinline", "");
+  try { await CAM.video.play(); } catch (e) {}
+
+  const tracks = CAM.stream.getVideoTracks();
+  CAM.track = tracks.length ? tracks[0] : null;
+
+  try {
+    CAM.caps = (CAM.track && CAM.track.getCapabilities) ? CAM.track.getCapabilities() : {};
+  } catch (e) {
+    CAM.caps = {};
+  }
+
+  /* zoom */
+  const row = $("zoom-row");
+  const slider = $("zoom");
+  if (CAM.caps && CAM.caps.zoom) {
+    const z = CAM.caps.zoom;
+    CAM.zoom = z.min || 1;
+    slider.min = z.min || 1;
+    slider.max = z.max || 1;
+    slider.step = z.step || 0.1;
+    slider.value = CAM.zoom;
+    $("zoom-val").textContent = Number(CAM.zoom).toFixed(1) + "×";
+    row.className = "on";
+    $("btnZoomMenos").disabled = false;
+    $("btnZoomMais").disabled = false;
+  } else {
+    row.className = "";
+    $("btnZoomMenos").disabled = true;
+    $("btnZoomMais").disabled = true;
+  }
+
+  /* lanterna */
+  $("btnTorch").disabled = !(CAM.caps && CAM.caps.torch);
+
+  CAM.ligada = true;
+  CAM.inicio = Date.now();
+  CAM.ultimoCodigo = "";
+  $("cam-hint").textContent = "Aproxime até o código preencher a faixa";
+
+  msg("Enquadre o código de barras dentro da faixa verde. " +
+      "Se não ler, use Zoom + ou aproxime o celular.", "ok");
+
+  CAM.loopId = setTimeout(cicloLeitura, 400);
+}
+
+function fecharCamera() {
+  CAM.ligada = false;
+
+  if (CAM.loopId) { clearTimeout(CAM.loopId); CAM.loopId = null; }
+
+  if (CAM.stream) {
+    CAM.stream.getTracks().forEach(function (t) { try { t.stop(); } catch (e) {} });
+    CAM.stream = null;
+  }
+  if (CAM.video) { try { CAM.video.srcObject = null; } catch (e) {} }
+
+  CAM.track = null;
+  CAM.caps = null;
+  CAM.leitor = null;
+
+  $("cam-panel").className = "";
+  $("zoom-row").className = "";
+
+  const btn = $("btnCamera");
+  btn.textContent = "Câmera";
+  btn.classList.remove("on");
+
+  const hint = $("cam-hint");
+  if (hint) hint.textContent = "Aproxime até o código preencher a faixa";
+}
+
+function aplicarZoom(valor) {
+  if (!CAM.track || !CAM.caps || !CAM.caps.zoom) return;
+  const z = CAM.caps.zoom;
+  let v = Number(valor);
+  v = Math.max(z.min || 1, Math.min(z.max || 1, v));
+
+  try {
+    CAM.track.applyConstraints({ advanced: [{ zoom: v }] });
+    CAM.zoom = v;
+    $("zoom").value = v;
+    $("zoom-val").textContent = Number(v).toFixed(1) + "×";
+  } catch (e) {}
+}
+
+function ajustarZoom(passo) {
+  if (!CAM.caps || !CAM.caps.zoom) return;
+  const z = CAM.caps.zoom;
+  const passoReal = (z.step || 0.1) * passo * 3;
+  aplicarZoom((CAM.zoom || z.min || 1) + passoReal);
+}
+
+let torchOn = false;
+function alternarTorch() {
+  if (!CAM.track || !CAM.caps || !CAM.caps.torch) return;
+  torchOn = !torchOn;
+  try {
+    CAM.track.applyConstraints({ advanced: [{ torch: torchOn }] });
+    $("btnTorch").classList.toggle("ativo", torchOn);
+    $("btnTorch").textContent = torchOn ? "Lanterna ON" : "Lanterna";
+  } catch (e) {
+    torchOn = false;
+  }
 }
 
 /* =======================================================================
@@ -1040,6 +1414,12 @@ function ligarEventos() {
   });
 
   $("btnCamera").addEventListener("click", abrirCamera);
+  $("btnFecharCam").addEventListener("click", fecharCamera);
+  $("btnZoomMenos").addEventListener("click", function () { ajustarZoom(-1); });
+  $("btnZoomMais").addEventListener("click", function () { ajustarZoom(1); });
+  $("btnTorch").addEventListener("click", alternarTorch);
+
+  $("zoom").addEventListener("input", function () { aplicarZoom(this.value); });
 
   $("fBusca").addEventListener("input", function () {
     const t = $("fBusca").value.trim();
@@ -1105,7 +1485,7 @@ function ligarEventos() {
   $("btnLimpar").addEventListener("click", limparLista);
 
   document.addEventListener("visibilitychange", function () {
-    if (document.hidden && cameraRodando) pararCamera();
+    if (document.hidden && CAM.ligada) fecharCamera();
   });
 }
 
@@ -1121,6 +1501,5 @@ document.addEventListener("DOMContentLoaded", function () {
 </script>
 </body>
 </html>
-
 
 
